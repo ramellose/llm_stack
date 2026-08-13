@@ -2,6 +2,8 @@
 
 IaC for a bootstrapped local LLM stack. This stack serves as a reproducible and offline-capable (after initial provisioning) environment for testing agents, pipeline orchestration, MCP servers and security boundaries.
 
+<img width="150" height="159" align="right" alt="Photo of a small 3D-printed 10 inch server rack in teal and magenta. From top to bottom, the rack contains a travel router, two SBCs, a mini PC and a switch." src="https://github.com/user-attachments/assets/7775be03-d9b5-4d67-893b-9603d26f3682" />
+
 Developed using readily available hardware:
 
 - Controller SBC to handle bootstrapping and provisioning (2 GB RAM, 32 GB eMMC)

@@ -1,0 +1,24 @@
+# Stores Docker version & Caddy configuration
+service_config:
+  ntfy:
+    kind: docker
+    version: v2.26.0
+    dirs: 
+      - { path: data, mode: "0755" }
+      - { path: cache, mode: "0755" }
+    caddy:
+      reverse_proxy_opts:
+        - "flush_interval -1"
+  openwebui:
+    kind: docker
+    version: 0.9.5
+    dirs:
+      - { path: data,   mode: "0755", owner: 1000, group: 1000}
+  vaultwarden:
+    kind: docker
+    version: 1.37.1
+    dirs: 
+      - { path: data, mode: "0755" }
+    caddy: 
+      reverse_proxy_opts:
+        - "header_up X-Real-IP {remote_host}"

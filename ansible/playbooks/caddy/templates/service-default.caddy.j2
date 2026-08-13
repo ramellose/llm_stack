@@ -1,0 +1,15 @@
+{{ svc.public_hostname }} {
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+                resolvers 1.1.1.1
+	}
+{% if cfg.reverse_proxy_opts is defined %}
+	reverse_proxy {{ svc.target_ip }}:{{ svc.target_port }} {
+{% for opt in cfg.reverse_proxy_opts %}
+		{{ opt }}
+{% endfor %}
+	}
+{% else %}
+	reverse_proxy {{ svc.target_ip }}:{{ svc.target_port }}
+{% endif %}
+}

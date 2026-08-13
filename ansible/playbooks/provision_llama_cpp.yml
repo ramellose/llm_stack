@@ -1,0 +1,6 @@
+---
+- name: Set up local LLM host
+  hosts: llama_hosts
+  become: true
+  roles:
+    - llama_cpp

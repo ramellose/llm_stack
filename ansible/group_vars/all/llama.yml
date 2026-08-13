@@ -1,0 +1,2 @@
+llama_cpp_port: 8080
+llama_server_host: llama_node_1

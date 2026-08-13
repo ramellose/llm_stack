@@ -1,0 +1,7 @@
+---
+- name: Install and deploy DNS nameservers + proxy
+  hosts: networkservices
+  become: true
+  roles:
+    - caddy
+    - unbound

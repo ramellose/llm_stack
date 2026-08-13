@@ -1,0 +1,113 @@
+---
+- name: Force apt to use IPv4 (LXCs have link-local IPv6 but no route)
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99force-IPv4
+    content: "Acquire::ForceIPv4 \"true\";\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name: 
+      - acl
+      - bzip2
+      - jq
+      - rsync
+      - sudo
+    state: present
+
+- name: Ensure admin user exists
+  user:
+    name: admin
+    groups: sudo
+    shell: /bin/bash
+    state: present
+
+- name: Read the generated public key from the controller
+  ansible.builtin.slurp:
+    src: "{{ controller_key_path }}.pub"
+  register: stack_public_key
+  delegate_to: "{{ controller_name }}"
+  run_once: true
+
+- name: Deploy authorized key
+  ansible.posix.authorized_key:
+    user: admin
+    key: "{{ stack_public_key.content | b64decode | trim }}"
+    state: present
+
+- name: Ensure admin user has passwordless sudo
+  lineinfile:
+    path: /etc/sudoers.d/admin
+    line: 'admin ALL=(ALL) NOPASSWD: ALL'
+    create: true
+
+- name: Ensure SSH password authentication is disabled
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+  notify: Restart sshd
+
+- name: Ensure root login is disabled
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  notify: Restart sshd
+
+- name: Ensure SSH login grace time is short
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?LoginGraceTime'
+    line: 'LoginGraceTime 30'
+    state: present
+  notify: Restart sshd
+
+- name: Install unattended-upgrades
+  apt:
+    name: unattended-upgrades
+    state: present
+
+- name: Configure unattended-upgrades
+  copy:
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+      Unattended-Upgrade::MinimalSteps "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable unattended-upgrades
+  copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Delete existing post-hardening inventory
+  ansible.builtin.file:
+    state: absent
+    path: /opt/llm_stack/ansible/inventory/post_harden.yml
+  delegate_to: "{{ controller_name }}"
+  run_once: true
+
+- name: Generate post-hardening inventory
+  ansible.builtin.template:
+    src: post_harden.yml.j2
+    dest: /opt/llm_stack/ansible/inventory/post_harden.yml
+    mode: '0644'
+  delegate_to: "{{ controller_name }}"
+  run_once: true

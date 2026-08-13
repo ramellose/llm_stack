@@ -1,0 +1,43 @@
+# Auto-generated post-hardening inventory
+# Managed by bootstrap playbook. Do not edit manually.
+{% set connection_vars = ['ansible_host', 'ansible_connection', 'ansible_port'] %}
+
+all:
+  vars: 
+    # Connection defaults
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_python_interpreter: /usr/bin/python3
+    # Privilege escalation (required for network config changes)
+    ansible_become: true
+    ansible_become_method: sudo
+
+  children:
+    managed_hosts:
+      children:
+{% for group in groups.keys() | reject('in', ['all', 'ungrouped']) | sort %}
+        {{ group }}:
+          hosts:
+{% for host in groups[group] | sort %}
+            {{ host }}: 
+{% for var in connection_vars %}
+{% if var in hostvars[host] %}
+              {{ var }}: {{ hostvars[host][var] | to_json }}
+{% endif %}
+{% endfor %}
+              ansible_user: "admin"
+{% endfor %}
+{% endfor %}
+# Encode services -> networkservices hierarchical grouping
+{% if 'services' in groups and 'networkservices' in groups %}
+    services:
+      children:
+        networkservices:
+{% endif %}
+{% set dockerservices_hosts = groups['all'] | select('search', 'dockerservices') | list %}
+{% if dockerservices_hosts | length > 0 %}
+    dockerservices:
+      hosts:
+{% for host in dockerservices_hosts %}
+        {{ host }}:
+{% endfor %}
+{% endif %}

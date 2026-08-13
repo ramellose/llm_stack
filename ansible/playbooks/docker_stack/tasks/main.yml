@@ -1,0 +1,57 @@
+---
+- name: Compute host-specific services
+  ansible.builtin.set_fact:
+    host_docker_services: >-
+      {{ services_on_host
+        | map(attribute='service') | list
+        | intersect(
+          service_config | dict2items
+          | selectattr('value.kind', 'equalto', 'docker')
+          | map(attribute='key') | list
+        ) }}
+
+- name: Ensure service parent directories exist
+  ansible.builtin.file:
+    path: "{{ compose_base_path }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ host_docker_services }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Create service subdirectories
+  ansible.builtin.file:
+    path: "{{ compose_base_path }}/{{ item.0.key }}/{{ item.1.path }}"
+    state: directory
+    mode: "{{ item.1.mode | default('0755') }}"
+    owner: "{{ item.1.owner | default(omit) }}"
+    group: "{{ item.1.group | default(omit) }}"
+  loop: "{{ service_config | dict2items
+    | selectattr('key', 'in', host_docker_services)
+    | subelements('value.dirs', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.key }}/{{ item.1.path }}"
+
+- name: Create shared docker networks
+  community.docker.docker_network:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ docker_networks | default([]) }}"
+
+- name: Deploy compose files
+  ansible.builtin.template:
+    src: "{{ item.service }}/docker-compose.yml.j2"
+    dest: "{{ compose_base_path }}/{{ item.service }}/docker-compose.yml"
+    mode: "0644"
+  loop: >-
+    {{ services_on_host | selectattr('service', 'in', host_docker_services) | list }}
+  loop_control:
+    label: "{{ item.service }}"
+
+- name: Ensure Docker compose stacks are up
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_base_path }}/{{ item }}"
+    state: present
+  loop: "{{ host_docker_services }}"
+  loop_control:
+    label: "{{ item }}"

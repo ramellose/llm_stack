@@ -1,0 +1,7 @@
+---
+- name: Install and deploy Docker services
+  hosts: dockerservices
+  become: true
+  roles:
+    - docker_engine
+    - docker_stack

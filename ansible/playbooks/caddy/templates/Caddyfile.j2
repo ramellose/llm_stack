@@ -1,0 +1,12 @@
+{% if caddy_acme_staging %}
+{
+    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+{% endif %}
+
+{% for svc in proxied_services.values() %}
+{% set cfg = (service_config[svc.service] | default({})).caddy | default({}) %}
+{% set tmpl = cfg.template | default('service-default') %}
+{% include tmpl ~ '.caddy.j2' %}
+
+{% endfor %}

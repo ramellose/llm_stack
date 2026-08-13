@@ -1,0 +1,7 @@
+# Internal DNS overrides
+# All hostnames resolve to Caddy
+server:
+    local-zone: "{{ base_domain }}" static
+{% for svc in proxied_services.values() %}
+    local-data: "{{ svc.public_hostname }}. A {{ caddy_ip }}"
+{% endfor %}

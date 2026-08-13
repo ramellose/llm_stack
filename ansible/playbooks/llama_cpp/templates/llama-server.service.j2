@@ -1,0 +1,12 @@
+{% set active_model = llama_models | selectattr('name', 'equalto', llama_cpp_default_model) | first %}
+
+[Unit]
+Description=llama.cpp server
+After=network.target
+
+[Service]
+ExecStart={{ llama_cpp_bin_dir }}/llama-server --n-gpu-layers {{ llama_cpp_n_gpu_layers }} --ctx-size {{ llama_cpp_ctx_size }} --flash-attn on --host 0.0.0.0 --port {{ llama_cpp_port }} --models-dir /opt/models --metrics
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

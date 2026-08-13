@@ -1,0 +1,13 @@
+services:
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:{{ service_config[item.service].version }}
+    container_name: openwebui
+    restart: always
+    environment:
+      OPENAI_API_BASE_URL: "http://{{ hostvars[llama_server_host].ansible_host }}:{{ llama_cpp_port }}/v1"
+      USER_UID: 1000
+      USER_GID: 1000
+    volumes:
+      - {{ compose_base_path }}/{{ item.service }}/data:/app/backend/data
+    ports:
+      - "{{ item.target_port }}:8080"

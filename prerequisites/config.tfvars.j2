@@ -1,0 +1,16 @@
+# --- Proxmox & Network Topology ---
+proxmox_node          = "{{ proxmox_node_name }}"
+network_bridge        = "{{ proxmox_bridge }}"
+gateway_ip            = "{{ gateway_ip }}"
+subnet_range          = "{{ subnet_range }}"
+dns_servers           = ["{{ gateway_ip }}"]
+base_domain           = "{{ base_domain }}"
+
+# --- Resource allocations ---
+default_lxc_cpu       = 2
+default_lxc_ram       = 2048
+default_lxc_disk      = 20
+
+default_vm_cpu        = 4
+default_vm_ram        = 8192
+default_vm_disk       = 40

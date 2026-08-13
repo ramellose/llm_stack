@@ -1,0 +1,3 @@
+unbound_listen_ip: "{{ ansible_host }}"
+unbound_access_subnet: "{{ subnet_range }}"
+caddy_ip: "{{ ansible_host }}"

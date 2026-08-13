@@ -1,0 +1,17 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy:{{ service_config[item.service].version }}
+    container_name: ntfy
+    command: serve
+    environment:
+      - NTFY_BASE_URL={{ ntfy_endpoint }}
+      - NTFY_CACHE_FILE=/var/cache/ntfy/cache.db
+      - NTFY_AUTH_FILE=/var/lib/ntfy/auth.db
+      - NTFY_AUTH_DEFAULT_ACCESS=deny-all
+      - NTFY_BEHIND_PROXY=true
+    volumes:
+      - {{ compose_base_path }}/{{ item.service }}/cache:/var/cache/ntfy
+      - {{ compose_base_path }}/{{ item.service }}/data:/var/lib/ntfy
+    ports:
+      - "{{ item.target_port }}:80"
+    restart: unless-stopped

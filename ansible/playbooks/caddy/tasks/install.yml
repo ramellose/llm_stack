@@ -1,0 +1,79 @@
+---
+- name: Install Caddy prerequisites
+  ansible.builtin.apt:
+    name: 
+      - debian-keyring
+      - debian-archive-keyring 
+      - apt-transport-https
+      - curl
+      - git # For unreleased Cloudflare bugfix
+    state: present
+    update_cache: true
+
+- name: Fetch and dearmor Caddy signing key
+  ansible.builtin.get_url: 
+    url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+    dest: /tmp/caddy-stable.gpg.key
+    mode: "0644"
+
+- name: Add Caddy key into keyring
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg /tmp/caddy-stable.gpg.key
+    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+- name: Add Caddy apt repository
+  ansible.builtin.get_url:
+    url: https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt
+    dest: /etc/apt/sources.list.d/caddy-stable.list
+    mode: "0644"
+
+- name: Install stock Caddy
+  ansible.builtin.apt: 
+    name: caddy
+    state: present
+    update_cache: true
+
+- name: Install Go toolchain 
+  ansible.builtin.apt:
+    name: golang-go
+    state: present
+
+- name: Install xcaddy
+  ansible.builtin.command: 
+    cmd: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+    creates: /root/go/bin/xcaddy
+  environment:
+    GOBIN: /root/go/bin
+    CGO_ENABLED: "0"
+    PATH: "/usr/local/bin:/usr/bin:/bin:/root/go/bin"
+
+- name: Build custom Caddy with Cloudflare DNS module 
+  ansible.builtin.command: 
+    cmd: >
+      /root/go/bin/xcaddy build {{ caddy_version }}
+      --with github.com/caddy-dns/cloudflare@{{ cloudflare_module_version }}
+      --output /root/caddy-custom
+    chdir: /root
+    creates: /root/caddy.custom
+
+- name: Verify Cloudflare module 
+  ansible.builtin.command:
+    cmd: /root/caddy-custom list-modules
+  register: caddy_modules
+  changed_when: false
+  failed_when: "'dns.providers.cloudflare' not in caddy_modules.stdout"
+
+- name: Divert the Caddy binary
+  ansible.builtin.command:
+    cmd: dpkg-divert --divert /usr/bin/caddy.default --rename /usr/bin/caddy
+    creates: /usr/bin/caddy.default 
+
+- name: Install the custom Caddy binary 
+  ansible.builtin.copy:
+    src: /root/caddy-custom
+    dest: /usr/bin/caddy
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart caddy

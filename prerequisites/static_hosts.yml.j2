@@ -1,0 +1,28 @@
+all:
+  vars:
+    # Connection defaults
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_python_interpreter: /usr/bin/python3
+    # Privilege escalation (required for network config changes)
+    ansible_become: true
+    ansible_become_method: sudo
+
+  children:
+    controller_hosts:
+      hosts:
+        controller_node_1:
+          ansible_host: {{ controller_static_ip }}
+          ansible_user: admin
+          ansible_connection: local
+    proxmox_hosts:
+      hosts:
+        proxmox_node_1:
+          ansible_host: {{ proxmox_static_ip }}
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+    llama_hosts:
+      hosts:
+        llama_node_1:
+          ansible_host: {{ llm_static_ip }}
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519

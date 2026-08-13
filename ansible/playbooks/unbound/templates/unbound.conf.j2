@@ -1,0 +1,16 @@
+server:
+    interface: {{ unbound_listen_ip }}
+    port: 53
+
+    access-control: 127.0.0.0/8 allow
+    access-control: {{ unbound_access_subnet }} allow
+    access-control: 0.0.0.0/0 refuse
+
+    hide-identity: yes
+    hide-version: yes
+    harden-glue: yes
+    harden-dnssec-stripped: yes 
+    do-ip6: no
+
+    prefetch: yes
+    cache-min-ttl: 60

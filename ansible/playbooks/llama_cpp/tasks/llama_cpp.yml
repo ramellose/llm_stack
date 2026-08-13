@@ -1,0 +1,35 @@
+---
+- name: Install build dependencies
+  ansible.builtin.apt:
+    name: 
+      - git
+      - build-essential
+      - cmake
+      - ccache
+      - libssl-dev
+    state: present
+
+# To upgrade: update llama_cpp_version in vars, delete llama_cpp_bin_dir/llama-cli, re-run playbook
+- name: Clone llama.cpp 
+  ansible.builtin.git: 
+    repo: 'https://github.com/ggml-org/llama.cpp.git'
+    dest: "{{ llama_cpp_dir }}"
+    version: "{{ llama_cpp_version }}"
+
+- name: Configure cmake
+  ansible.builtin.command: "cmake -B build {{ llama_cpp_cmake_args }}"
+  args:
+    chdir: "{{ llama_cpp_dir }}"
+    creates: "{{ llama_cpp_dir }}/build/CMakeCache.txt"
+
+- name: Compile llama.cpp
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - --build
+      - build
+      - --
+      - -j{{ llama_cpp_cmake_processors }}
+  args:
+    chdir: "{{ llama_cpp_dir }}"
+    creates: "{{ llama_cpp_bin_dir }}/llama-cli"

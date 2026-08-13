@@ -1,0 +1,54 @@
+---
+- name: Ensure /etc/caddy directory exists
+  file:
+    path: "{{ caddy_config_dir }}"
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: '0750'
+
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_config_dir }}/Caddyfile"
+    owner: caddy
+    group: caddy
+    mode: "0640"
+    validate: "caddy validate --config %s --adapter caddyfile --envfile {{ caddy_env_file }}"
+  notify: Reload caddy
+
+- name: Write caddy.env
+  template:
+    src: caddy.env.j2
+    dest: "{{ caddy_env_file }}"
+    owner: caddy
+    group: caddy
+    mode: '0600'
+
+- name: Ensure systemd override directory exists
+  file:
+    path: "{{ caddy_systemd_override_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Deploy systemd override for env file
+  copy:
+    dest: "{{ caddy_systemd_override_dir }}/override.conf"
+    content: |
+      [Service]
+      EnvironmentFile={{ caddy_env_file }}
+      ExecStart=
+      ExecStart={{ caddy_bin_path }} run --config {{ caddy_config_dir }}/Caddyfile
+      ExecReload=
+      ExecReload={{ caddy_bin_path }} reload --config {{ caddy_config_dir }}/Caddyfile --force
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Flush handlers before starting service
+  meta: flush_handlers    
+
+- name: Ensure Caddy service is enabled and running
+  service:
+    name: caddy
+    enabled: true
+    state: started

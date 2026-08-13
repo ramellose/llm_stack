@@ -1,0 +1,41 @@
+---
+- name: Install Unbound
+  ansible.builtin.apt:
+    name: unbound
+    state: present
+    update_cache: true
+
+- name: Ensure Unbound config drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/unbound/unbound.conf.d
+    state: directory
+    owner: root
+    group: unbound
+    mode: "0755"
+  notify: Restart unbound
+
+- name: Deploy resolver configuration 
+  ansible.builtin.template:
+    src: unbound.conf.j2
+    dest: /etc/unbound/unbound.conf.d/00-resolver.conf
+    owner: root
+    group: unbound
+    mode: "0644"
+    validate: unbound-checkconf %s
+  notify: Restart unbound 
+
+- name: Deploy service overrides
+  ansible.builtin.template:
+    src: local-overrides.conf.j2
+    dest: /etc/unbound/unbound.conf.d/10-overrides.conf
+    owner: root
+    group: unbound
+    mode: "0644"
+    validate: unbound-checkconf %s
+  notify: Reload unbound
+
+- name: Ensure Unbound is enabled and running
+  ansible.builtin.systemd: 
+    name: unbound
+    state: started
+    enabled: true 

@@ -1,0 +1,11 @@
+---
+arch_map:
+  x86_64: amd64
+  aarch64: arm64
+  armv7l: armv7
+  armv6l: armv6
+node_exporter_arch: "{{ arch_map[ansible_architecture] }}"
+node_exporter_version: "1.11.1"
+controller_name: controller_node_1
+controller_key_owner: admin
+controller_key_path: "/home/{{ controller_key_owner }}/.ssh/id_ed25519"

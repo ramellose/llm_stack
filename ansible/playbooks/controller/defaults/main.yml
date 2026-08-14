@@ -1,0 +1,31 @@
+python_version: "3"
+default_user: admin   # This user runs the Ansible playbooks; needs passwordless sudo
+controller_key_owner: "{{ default_user }}"
+ansible_venv_path: "/opt/ansible_venv"
+
+ansible_root: "{{ playbook_dir | dirname }}"
+repo_root: "{{ ansible_root | dirname }}"
+inventory_dir: "{{ project_root }}/inventory"
+roles_dir: "{{ playbook_dir }}/roles"
+network_vars_path: "{{ inventory_dir }}/group_vars/networkservices"
+services_vars_path: "{{ inventory_dir }}/group_vars/services"
+controller_vars_path: "{{ inventory_dir }}/group_vars/controller_hosts"
+
+# Initial configuration;
+# Set in group_vars/controller_hosts by bootstrap.sh
+controller_static_ip: 
+llm_static_ip: 
+proxmox_static_ip:
+proxmox_node_name: 
+
+gateway_ip: 
+subnet_range:
+base_domain:
+
+stack_cloudflare_token: 
+stack_vaultwarden_secret: 
+stack_proxmox_api_token:
+
+proxmox_endpoint: "https://{{ proxmox_static_ip }}:8006"
+proxmox_bridge: vmbr0
+proxmox_api_token_id: "iac-controller@pam!iac-controller"

@@ -1,5 +1,12 @@
-# ---> Python
+# Configuration
 config.tfvars
+inventory.ini
+config.yaml
+vault.yml 
+*.tmp
+*.env
+
+# ---> Python
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

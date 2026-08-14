@@ -1,0 +1,42 @@
+---
+- name: Read the generated public key from the controller
+  ansible.builtin.slurp:
+    src: "{{ controller_key_path }}.pub"
+  register: stack_public_key
+
+- name: Copy OpenTofu environment template
+  ansible.builtin.template:
+    src: tofu.env.j2
+    dest: "{{ repo_root }}/opentofu/.env"
+    mode: '0600'
+
+- name: Copy config.tfvars template
+  ansible.builtin.template:
+    src: config.tfvars.j2
+    dest: "{{ repo_root }}/config.tfvars"
+    mode: '0600'
+
+- name: Copy static_hosts.yml template
+  ansible.builtin.template:
+    src: static_hosts.yml.j2
+    dest: "{{ inventory_dir }}/static_hosts.yml"
+    owner: "{{ controller_key_owner }}"
+    group: "{{ controller_key_owner }}"
+    mode: '0644'
+
+- name: Set deploy path ownership
+  ansible.builtin.file:
+    path: "{{ repo_root }}"
+    owner: "{{ controller_key_owner }}"
+    group: "{{ controller_key_owner }}"
+    recurse: true
+    state: directory
+
+- name: Run OpenTofu apply with secure secret injection
+  ansible.builtin.command:
+    cmd: "{{ repo_root }}/scripts/tofu.sh apply"
+  environment:
+    TF_VAR_proxmox_api_token: "{{ vault_proxmox_api_token }}"
+  register: tofu_output
+  changed_when: "'Apply complete' in tofu_output.stdout"
+  no_log: true

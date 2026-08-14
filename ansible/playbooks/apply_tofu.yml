@@ -1,0 +1,14 @@
+---
+- name: Run `tofu apply` and inject secrets
+  hosts: localhost
+  become: true
+  connection: local
+  gather_facts: false
+  roles:
+    - controller
+
+  tasks:
+    - name: Run tofu
+      ansible.builtin.include_role:
+        name: controller
+        tasks_from: config.yml

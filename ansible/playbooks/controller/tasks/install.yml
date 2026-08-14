@@ -1,0 +1,70 @@
+---
+- name: Symlink Ansible binaries onto system PATH
+  ansible.builtin.file:
+    src: "{{ ansible_venv_path }}/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop:
+    - ansible
+    - ansible-inventory
+    - ansible-playbook
+    - ansible-galaxy
+    - ansible-vault
+
+- name: Install OpenTofu APT dependencies
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+
+- name: Ensure APT keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download OpenTofu primary GPG key
+  ansible.builtin.get_url:
+    url: https://get.opentofu.org/opentofu.gpg
+    dest: /etc/apt/keyrings/opentofu.gpg
+    mode: '0644'
+
+- name: Download OpenTofu repository key
+  ansible.builtin.get_url:
+    url: https://packages.opentofu.org/opentofu/tofu/gpgkey
+    dest: /etc/apt/keyrings/opentofu-repo.asc
+    mode: '0644'
+
+- name: Dearmor OpenTofu repository key
+  ansible.builtin.command:
+    cmd: "gpg --batch --yes --dearmor -o /etc/apt/keyrings/opentofu-repo.gpg /etc/apt/keyrings/opentofu-repo.asc"
+    creates: /etc/apt/keyrings/opentofu-repo.gpg
+
+- name: Secure GPG key permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: '0644'
+    state: file
+  loop:
+    - /etc/apt/keyrings/opentofu.gpg
+    - /etc/apt/keyrings/opentofu-repo.gpg
+
+- name: Add OpenTofu APT repository
+  ansible.builtin.copy:
+    content: |
+      deb [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] https://packages.opentofu.org/opentofu/tofu/any/ any main
+      deb-src [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] https://packages.opentofu.org/opentofu/tofu/any/ any main
+    dest: /etc/apt/sources.list.d/opentofu.list
+    mode: '0644'
+
+- name: Update APT cache after repository configuration
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install OpenTofu
+  ansible.builtin.apt:
+    name: tofu
+    state: present

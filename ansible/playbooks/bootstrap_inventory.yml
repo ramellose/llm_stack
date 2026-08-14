@@ -1,0 +1,8 @@
+---
+- name: Bootstrap Ansible and OpenTofu configuration
+  hosts: localhost
+  become: true
+  connection: local
+  gather_facts: false
+  roles:
+    - controller

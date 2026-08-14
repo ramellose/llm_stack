@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # Configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OPENTOFU_DIR="${SCRIPT_DIR}/opentofu"
-CONFIG_FILE="${SCRIPT_DIR}/config.tfvars"
-ANSIBLE_INVENTORY_DIR="${SCRIPT_DIR}/ansible/inventory"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/"
+OPENTOFU_DIR="${SCRIPT_DIR}/../opentofu"
+CONFIG_FILE="${SCRIPT_DIR}/../config.tfvars"
+ANSIBLE_INVENTORY_DIR="${SCRIPT_DIR}/../ansible/inventory"
 STATE_FILE="${OPENTOFU_DIR}/state/terraform.tfstate"
 BACKUP_DIR="${OPENTOFU_DIR}/state/backups"
-LOG_FILE="${SCRIPT_DIR}/deploy.log"
+LOG_FILE="${SCRIPT_DIR}/../deploy.log"
 
 set -a
 source "${OPENTOFU_DIR}/.env"

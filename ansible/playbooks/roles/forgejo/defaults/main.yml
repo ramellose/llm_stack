@@ -1,0 +1,56 @@
+---
+# Version / binary
+forgejo_version: "15.0.1"
+forgejo_arch: "linux-amd64"
+forgejo_download_url: "https://codeberg.org/forgejo/forgejo/releases/download/v{{ forgejo_version }}/forgejo-{{ forgejo_version }}-{{ forgejo_arch }}"
+forgejo_binary_path: /usr/local/bin/forgejo
+
+# Identity
+# UID 1000 deliberately matches USER_UID from the old Docker compose file,
+# so restored data ownership lines up without a mass chown.
+forgejo_user: git
+forgejo_group: git
+forgejo_uid: 1000
+forgejo_gid: 1000
+
+# Paths
+forgejo_config_dir: /etc/forgejo
+forgejo_config_file: "{{ forgejo_config_dir }}/app.ini"
+forgejo_work_dir: /var/lib/forgejo
+forgejo_data_dir: "{{ forgejo_work_dir }}/data"
+forgejo_repo_root: "{{ forgejo_work_dir }}/data/git/repositories"
+forgejo_lfs_dir: "{{ forgejo_work_dir }}/data/lfs"
+forgejo_custom_dir: "{{ forgejo_work_dir }}/custom"
+forgejo_log_dir: /var/log/forgejo
+
+# Network
+forgejo_http_addr: "{{ ansible_host }}"
+forgejo_http_port: 3000
+forgejo_root_url: "https://forgejo.{{ base_domain }}/"
+forgejo_domain: "forgejo.{{ base_domain }}"
+forgejo_api_base: "https://forgejo.{{ base_domain }}/api/v1"
+
+# Built-in SSH server
+forgejo_ssh_domain: "{{ forgejo_domain }}"
+forgejo_ssh_port: 2222
+forgejo_ssh_listen_port: 2222
+forgejo_start_ssh_server: true
+
+# Database — SQLite
+forgejo_db_type: sqlite3
+forgejo_db_path: "{{ forgejo_data_dir }}/gitea/forgejo.db"
+
+# Behaviour
+forgejo_disable_registration: true
+forgejo_require_signin_view: false
+forgejo_log_level: Info
+
+# Webhook allowlist — these endpoints can listen to Forgejo events
+forgejo_webhook_allowed_host_list:
+  - mcp-reviewer-webhook.{{ base_domain }}
+  - tasks-webhook.{{ base_domain }}
+
+# Secrets: define these in group_vars/forgejo/vault.yml and map them in vars.yml
+# forgejo_secret_key:      "{{ vault_forgejo_secret_key }}"
+# forgejo_internal_token:  "{{ vault_forgejo_internal_token }}"
+# forgejo_lfs_jwt_secret:  "{{ vault_forgejo_lfs_jwt_secret }}"

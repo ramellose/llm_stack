@@ -1,0 +1,237 @@
+---
+- name: Install runtime dependencies
+  ansible.builtin.apt:
+    name:
+      - git
+      - git-lfs
+      - sqlite3
+    state: present
+    update_cache: true
+
+- name: Ensure git group exists
+  ansible.builtin.group:
+    name: git
+    system: true
+    state: present
+
+- name: Ensure git user exists
+  ansible.builtin.user:
+    name: git
+    group: git
+    home: /home/git
+    shell: /usr/bin/git-shell
+    system: true
+    state: present
+
+- name: Ensure git SSH dir exists
+  ansible.builtin.file:
+    path: /home/git/.ssh
+    state: directory
+    owner: git
+    group: git
+    mode: '0700'
+
+- name: Ensure authorized_keys exists
+  ansible.builtin.file:
+    path: /home/git/.ssh/authorized_keys
+    state: touch
+    owner: git
+    group: git
+    mode: '0600'
+
+- name: Create directory tree
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(forgejo_user) }}"
+    group: "{{ forgejo_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    # Config dir is root-owned, group-readable — forgejo reads app.ini but must not rewrite it
+    - { path: "{{ forgejo_config_dir }}", owner: root, mode: "0750" }
+    - { path: "{{ forgejo_work_dir }}", mode: "0750" }
+    - { path: "{{ forgejo_data_dir }}", mode: "0750" }
+    - { path: "{{ forgejo_data_dir }}/gitea", mode: "0750" }
+    - { path: "{{ forgejo_repo_root }}", mode: "0750" }
+    - { path: "{{ forgejo_lfs_dir }}", mode: "0750" }
+    - { path: "{{ forgejo_custom_dir }}", mode: "0750" }
+    - { path: "{{ forgejo_log_dir }}", mode: "0750" }
+
+- name: Check installed binary version
+  ansible.builtin.command: "{{ forgejo_binary_path }} --version"
+  register: forgejo_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Download Forgejo binary
+  ansible.builtin.get_url:
+    url: "{{ forgejo_download_url }}"
+    dest: "{{ forgejo_binary_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: forgejo_version not in (forgejo_installed_version.stdout | default(''))
+  notify: Restart forgejo
+
+###########
+# Secrets #
+###########
+- name: Ensure Vaultwarden session 
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: session
+    apply:
+        delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    bw_email: "admin@{{ base_domain }}"
+    bw_master_password: "{{ hostvars[secrets_controller_host].vault_vaultwarden_secret }}"
+
+- name: Generate candidate Forgejo secrets
+  ansible.builtin.command: "{{ forgejo_binary_path }} generate secret {{ item.type }}"
+  register: forgejo_gen
+  changed_when: false
+  loop:
+    - { key: forgejo-secret-key,         type: SECRET_KEY }
+    - { key: forgejo-internal-token,     type: INTERNAL_TOKEN }
+    - { key: forgejo-oauth2-jwt-secret,  type: JWT_SECRET }
+    - { key: forgejo-lfs-jwt-secret,     type: JWT_SECRET }
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Build VW payload
+  ansible.builtin.set_fact:
+    forgejo_vw_secrets: "{{ forgejo_vw_secrets | default([]) + [{'name': item.item.key, 'value': item.stdout}] }}"
+  loop: "{{ forgejo_gen.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  delegate_to: "{{ secrets_controller_host }}"
+  no_log: true
+
+- name: Reconcile secrets
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: insert_secret
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  loop: "{{ forgejo_vw_secrets }}"
+  loop_control:
+    loop_var: secret
+    label: "{{ secret.name }}"
+
+- name: Set secrets vars
+  ansible.builtin.set_fact:
+    forgejo_secret_key: "{{ vw_resolved['forgejo-secret-key'] }}"
+    forgejo_internal_token: "{{ vw_resolved['forgejo-internal-token'] }}"
+    forgejo_oauth2_jwt_secret: "{{ vw_resolved['forgejo-oauth2-jwt-secret'] }}"
+    forgejo_lfs_jwt_secret: "{{ vw_resolved['forgejo-lfs-jwt-secret'] }}"
+  no_log: true
+
+####################
+# Config + service #
+####################
+- name: Deploy app.ini
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: "{{ forgejo_config_file }}"
+    owner: root
+    group: "{{ forgejo_group }}"
+    mode: "0640"
+  notify: Restart forgejo
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: forgejo.service.j2
+    dest: /etc/systemd/system/forgejo.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart forgejo
+
+- name: Enable and start forgejo
+  ansible.builtin.systemd:
+    name: forgejo
+    enabled: true
+    state: started
+    daemon_reload: true
+
+#############
+# Set admin #
+#############
+- name: Retrieve admin user(s)
+  ansible.builtin.command: >-
+    {{ forgejo_binary_path }} admin user list --config {{ forgejo_config_file }}
+  become: true
+  become_user: "{{ forgejo_user }}"
+  environment:
+    GITEA_WORK_DIR: "{{ forgejo_work_dir }}"
+  register: forgejo_admin_list
+  changed_when: false
+
+- name: Extract usernames
+  ansible.builtin.set_fact:
+    forgejo_existing_users: >-
+      {{ forgejo_admin_list.stdout_lines[1:]
+         | map('split') | map(attribute=1) | list }}
+
+- name: Determine whether admin needs creating
+  ansible.builtin.set_fact:
+    forgejo_admin_exists: "{{ forgejo_admin_username in forgejo_existing_users }}"
+
+- name: Provision admin account
+  when: not forgejo_admin_exists
+  block:
+  - name: Generate admin password
+    ansible.builtin.set_fact:
+      forgejo_admin_password: "{{ lookup('ansible.builtin.password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+    no_log: true
+
+  - name: Create admin user
+    ansible.builtin.command: >-
+      {{ forgejo_binary_path }} admin user create
+      --admin
+      --username {{ forgejo_admin_username | quote }}
+      --email {{ forgejo_admin_email | quote }}
+      --password {{ forgejo_admin_password | quote }}
+      --must-change-password=false
+      --config {{ forgejo_config_file }}
+    become: true
+    become_user: "{{ forgejo_user }}"
+    environment:
+      GITEA_WORK_DIR: "{{ forgejo_work_dir }}"
+    no_log: true
+    changed_when: true
+
+  - name: Generate admin API token
+    ansible.builtin.command: >-
+      {{ forgejo_binary_path }} admin user generate-access-token
+      --username {{ forgejo_admin_username | quote }}
+      --token-name ansible-provisioning
+      --scopes all
+      --raw
+      --config {{ forgejo_config_file }}
+    become: true
+    become_user: "{{ forgejo_user }}"
+    environment:
+      GITEA_WORK_DIR: "{{ forgejo_work_dir }}"
+    register: forgejo_admin_token_gen
+    no_log: true
+    changed_when: true
+
+  - name: Store admin credentials in Vaultwarden
+    ansible.builtin.include_role:
+      name: secrets
+      tasks_from: insert_secret
+      apply:
+        delegate_to: "{{ secrets_controller_host }}"
+    loop:
+      - name: forgejo-admin-password
+        username: "{{ forgejo_admin_username }}"
+        value: "{{ forgejo_admin_password }}"
+      - name: forgejo-admin-api-token
+        username: "{{ forgejo_admin_username }}"
+        value: "{{ forgejo_admin_token_gen.stdout }}"
+    loop_control:
+      loop_var: secret
+      label: "{{ secret.name }}"

@@ -1,0 +1,3 @@
+controller_key_owner: admin
+controller_key_path: "/home/{{ controller_key_owner }}/.ssh/id_ed25519"
+vw_gen_cmd: "openssl rand -hex 32"  # Default for generating secrets

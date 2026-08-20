@@ -1,0 +1,78 @@
+---
+- name: "[{{ org.key }}/{{ team.name }}] Build units_map"
+  ansible.builtin.set_fact:
+    _units_map: >-
+      {{
+        dict(
+          (team.spec.units | default({}) | dict2items)
+          | map(attribute='key') | map('regex_replace', '^', 'repo.') | list
+          | zip(
+              (team.spec.units | default({}) | dict2items) | map(attribute='value') | list
+            )
+        )
+      }}
+
+- name: "[{{ org.key }}/{{ team.name }}] List existing teams"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}/teams"
+    method: GET
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [200]
+  register: fj_teams
+
+- name: "[{{ org.key }}/{{ team.name }}] Resolve existing team"
+  ansible.builtin.set_fact:
+    _existing_team: >-
+      {{ fj_teams.json | selectattr('name', 'equalto', team.name)
+                       | list | first | default(None) }}
+
+- name: "[{{ org.key }}/{{ team.name }}] Create team"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}/teams"
+    method: POST
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    body_format: json
+    body:
+      name: "{{ team.name }}"
+      description: "{{ team.spec.description | default('') }}"
+      permission: "{{ team.spec.permission | default('read') }}"
+      includes_all_repositories: "{{ team.spec.includes_all_repositories | default(false) }}"
+      units_map: "{{ _units_map }}"
+      can_create_org_repo: false
+    status_code: [201]
+  when: _existing_team is none
+  register: fj_team_create
+
+- name: "[{{ org.key }}/{{ team.name }}] Update team"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/teams/{{ _existing_team.id }}"
+    method: PATCH
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    body_format: json
+    body:
+      name: "{{ team.name }}"
+      description: "{{ team.spec.description | default('') }}"
+      permission: "{{ team.spec.permission | default('read') }}"
+      includes_all_repositories: "{{ team.spec.includes_all_repositories | default(false) }}"
+      units_map: "{{ _units_map }}"
+    status_code: [200]
+  when: _existing_team is not none
+
+- name: "[{{ org.key }}/{{ team.name }}] Resolve team id"
+  ansible.builtin.set_fact:
+    _team_id: "{{ _existing_team.id if _existing_team is not none else fj_team_create.json.id }}"
+
+- name: "[{{ org.key }}/{{ team.name }}] Attach repos"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/teams/{{ _team_id }}/repos/{{ org.key }}/{{ item }}"
+    method: PUT
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [204]
+  loop: "{{ team.spec.repos | default([]) }}"
+  loop_control:
+    label: "{{ org.key }}/{{ item }}"
+  when: not (team.spec.includes_all_repositories | default(false))

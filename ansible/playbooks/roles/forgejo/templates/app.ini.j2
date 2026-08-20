@@ -1,0 +1,58 @@
+; {{ ansible_managed }}
+; Managed by the `forgejo` Ansible role. Manual edits will be overwritten.
+
+APP_NAME = Forgejo
+RUN_USER = {{ forgejo_user }}
+RUN_MODE = prod
+WORK_PATH = {{ forgejo_work_dir }}
+
+[server]
+PROTOCOL         = http
+DOMAIN           = {{ forgejo_domain }}
+ROOT_URL         = {{ forgejo_root_url }}
+HTTP_ADDR        = {{ forgejo_http_addr }}
+HTTP_PORT        = {{ forgejo_http_port }}
+DISABLE_SSH      = false
+START_SSH_SERVER = {{ forgejo_start_ssh_server | lower }}
+SSH_DOMAIN       = {{ forgejo_ssh_domain }}
+SSH_PORT         = {{ forgejo_ssh_port }}
+SSH_LISTEN_PORT  = {{ forgejo_ssh_listen_port }}
+LFS_START_SERVER = true
+LFS_JWT_SECRET   = {{ forgejo_lfs_jwt_secret }}
+OFFLINE_MODE     = true
+
+[database]
+DB_TYPE = {{ forgejo_db_type }}
+PATH    = {{ forgejo_db_path }}
+
+[repository]
+ROOT = {{ forgejo_repo_root }}
+
+[lfs]
+PATH = {{ forgejo_lfs_dir }}
+
+[security]
+INSTALL_LOCK   = true
+SECRET_KEY     = {{ forgejo_secret_key }}
+INTERNAL_TOKEN = {{ forgejo_internal_token }}
+
+[service]
+DISABLE_REGISTRATION      = {{ forgejo_disable_registration | lower }}
+REQUIRE_SIGNIN_VIEW       = {{ forgejo_require_signin_view | lower }}
+REGISTER_EMAIL_CONFIRM    = false
+ENABLE_NOTIFY_MAIL        = false
+DEFAULT_KEEP_EMAIL_PRIVATE = true
+
+[webhook]
+ALLOWED_HOST_LIST = {{ forgejo_webhook_allowed_host_list | join(',') }}
+
+[actions]
+ENABLED = true
+
+[log]
+ROOT_PATH = {{ forgejo_log_dir }}
+MODE      = console
+LEVEL     = {{ forgejo_log_level }}
+
+[oauth2]
+JWT_SECRET = {{ forgejo_oauth2_jwt_secret }}

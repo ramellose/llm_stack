@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     environment:
       DOMAIN: "https://vaultwarden.{{ base_domain }}"
+      ADMIN_TOKEN: "{{ vault_vaultwarden_admin_token_hash | trim | replace('$', '$$') }}"
+      SIGNUPS_ALLOWED: "false" # Disabled by default
+      SIGNUPS_VERIFY: "false"
     volumes:
       - {{ compose_base_path }}/{{ item.service }}/data/:/data/
     ports:

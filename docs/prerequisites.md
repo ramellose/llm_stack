@@ -11,9 +11,10 @@ The commands below can be used to create a service account and obtain an API key
 
 ```
 pveum user add iac-controller@pam --comment "IaC Controller Service Account"
-pveum acl modify /nodes/<node_name> --user iac-controller@pam --role PVEAdmin
-pveum user token add iac-controller@pam iac-controller --privsep 1 --comment "OpenTofu & Ansible Automation"
-pveum acl modify /nodes/<node_name> --token 'iac-controller@pam!iac-controller' --role PVEAdmin
+pveum acl modify /nodes/<node_name> --user iac-controller@pam --role Administrator
+pveum user token add iac-controller@pam iac-controller --privsep 0 --comment "OpenTofu & Ansible Automation"
+pveum acl modify /nodes/<node_name> --token 'iac-controller@pam!iac-controller' --role Administrator
+pveum acl modify /storage/<iso-store> --token 'iac-controller@pam!iac-controller' --role Administrator
 ```
 
 ## DNS overrides

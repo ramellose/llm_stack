@@ -11,13 +11,14 @@
     - ansible-galaxy
     - ansible-vault
 
-- name: Install OpenTofu APT dependencies
+- name: Install OpenTofu APT and Argon2 dependencies
   ansible.builtin.apt:
     name:
       - apt-transport-https
       - ca-certificates
       - curl
       - gnupg
+      - argon2
     state: present
 
 - name: Ensure APT keyrings directory exists

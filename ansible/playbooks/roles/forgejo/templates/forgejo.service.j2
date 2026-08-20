@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Forgejo (Beyond coding. We forge.)
+After=network.target
+RequiresMountsFor={{ forgejo_work_dir }}
+
+[Service]
+Type=simple
+User={{ forgejo_user }}
+Group={{ forgejo_group }}
+WorkingDirectory={{ forgejo_work_dir }}
+ExecStart={{ forgejo_binary_path }} web --config {{ forgejo_config_file }}
+Restart=always
+RestartSec=2s
+
+Environment=USER={{ forgejo_user }}
+Environment=HOME={{ forgejo_work_dir }}
+Environment=GITEA_WORK_DIR={{ forgejo_work_dir }}
+
+# Hardening. AF_UNIX is needed for SQLite/internal sockets; AF_NETLINK for Go's resolver.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+LockPersonality=true
+ReadWritePaths={{ forgejo_work_dir }} {{ forgejo_log_dir }}
+
+# Binding to :2222 needs no capability (>1024). If you ever move SSH to :22,
+# add: AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

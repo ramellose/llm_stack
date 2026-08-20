@@ -1,0 +1,72 @@
+---
+default_org: platform
+forgejo_admin_username: stack_admin
+forgejo_admin_email: "admin@{{ base_domain }}"
+
+forgejo_orgs:
+  platform:
+    full_name: LLM stack
+    description: "Git-based agent harness"
+    website: "https://forgejo.{{ base_domain }}/stack"
+    visibility: public
+    repos:
+      - name: tasks 
+      - name: agents 
+    teams:
+
+      humans: 
+        description: "Human contributors (full access to test box)"
+        permission: admin
+        includes_all_repositories: true
+      
+      workers:
+        description: "Worker team"
+        units:
+          code: write
+          pull_requests: write
+          issues: read 
+          actions: read
+        repos:
+          - tasks
+          - agents
+      
+      reviewers: 
+        description: "Reviewer team"
+        units:
+          issues: write
+          pull_requests: read
+          code: read
+          actions: read 
+        repos: 
+          - tasks
+          - agents
+      
+      runners:
+        description: "CI runner — builds and pushes seed images from repo code"
+        units:
+          code: read
+          actions: write
+          packages: write
+        repos:
+          - tasks
+          - agents
+      
+      sandbox:
+        description: "Sandbox — pulls seed images and reads code"
+        units:
+          code: read
+          actions: read
+          packages: read
+        repos:
+          - tasks
+          - agents
+
+human_users:  # Machine users are in group_vars/services
+  - name: "{{ forgejo_admin_username }}"
+    role: owner
+    teams: 
+      - humans
+  - name: testuser
+    role: member
+    teams: 
+      - humans

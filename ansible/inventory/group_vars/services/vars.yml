@@ -1,5 +1,13 @@
-# Stores Docker version & Caddy configuration
+compose_base_path: /opt/docker
+
 service_config:
+  uptime-kuma:
+    kind: docker
+    version: 2.4.0
+    dirs: 
+      - { path: data, mode: "0755" }
+    caddy:
+      template: uptime-kuma
   ntfy:
     kind: docker
     version: v2.26.0
@@ -14,6 +22,11 @@ service_config:
     version: 0.9.5
     dirs:
       - { path: data,   mode: "0755", owner: 1000, group: 1000}
+  diun:
+    kind: docker
+    version: 4.33
+    dirs: 
+      - { path: data, mode: "0755" }
   vaultwarden:
     kind: docker
     version: 1.37.1
@@ -22,3 +35,7 @@ service_config:
     caddy: 
       reverse_proxy_opts:
         - "header_up X-Real-IP {remote_host}"
+
+  # Non-Docker
+  forgejo:
+    kind: forgejo

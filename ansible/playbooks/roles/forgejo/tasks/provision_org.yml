@@ -1,0 +1,100 @@
+---
+- name: "[{{ org.key }}] Check whether org exists"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}"
+    method: GET
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [200, 404]
+  register: org_get
+
+- name: "[{{ org.key }}] Create org"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs"
+    method: POST
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    body_format: json
+    body:
+      username: "{{ org.key }}"
+      full_name: "{{ org.value.full_name | default(omit) }}"
+      description: "{{ org.value.description | default(omit) }}"
+      website: "{{ org.value.website | default(omit) }}"
+      visibility: "{{ org.value.visibility | default('public') }}"
+      repo_admin_change_team_access: true
+    status_code: [201]
+  when: org_get.status == 404
+
+- name: "[{{ org.key }}] Update org"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}"
+    method: PATCH
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    body_format: json
+    body:
+      full_name: "{{ org.value.full_name | default(omit) }}"
+      description: "{{ org.value.description | default(omit) }}"
+      website: "{{ org.value.website | default(omit) }}"
+      visibility: "{{ org.value.visibility | default('public') }}"
+    status_code: [200]
+  when: org_get.status == 200
+
+- name: "[{{ org.key }}] Create / update repos"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}/repos"
+    method: POST
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    body_format: json
+    body:
+      name: "{{ item.name }}"
+      description: "{{ item.description | default('') }}"
+      private: "{{ item.private | default(true) }}"
+      auto_init: "{{ item.auto_init | default(true) }}"
+      default_branch: "{{ item.default_branch | default('main') }}"
+    status_code: [201, 409]
+  loop: "{{ org.value.repos | default([]) }}"
+  loop_control:
+    label: "{{ org.key }}/{{ item.name }}"
+
+- name: "[{{ org.key }}] Create/update teams"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}/teams"
+    method: POST
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    body_format: json
+    body:
+      name: "{{ item.key }}"
+      description: "{{ item.value.description | default('') }}"
+      permission: "{{ item.value.permission | default('read') }}"
+      includes_all_repositories: "{{ item.value.includes_all_repositories | default(false) }}"
+      units_map: "{{ dict(item.value.units | default({}) | dict2items
+                          | map(attribute='key') | map('regex_replace', '^', 'repo.') | list
+                          | zip(item.value.units | default({}) | dict2items
+                                | map(attribute='value') | list)) }}"
+    status_code: [201, 422]
+  loop: "{{ org.value.teams | dict2items }}"
+  loop_control:
+    label: "{{ org.key }}/{{ item.key }}"
+
+- name: "[{{ org.key }}] List teams (resolve ids)"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ org.key }}/teams"
+    method: GET
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [200]
+  register: fj_org_teams
+
+- name: "[{{ org.key }}] Attach repos"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/teams/{{ (fj_org_teams.json | selectattr('name','equalto', item.0.key) | first).id }}/repos/{{ org.key }}/{{ item.1 }}"
+    method: PUT
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [204, 404]
+  loop: "{{ org.value.teams | dict2items | subelements('value.repos', skip_missing=True) }}"
+  loop_control:
+    label: "{{ org.key }}/{{ item.0.key }} += {{ item.1 }}"

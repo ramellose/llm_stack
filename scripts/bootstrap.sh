@@ -13,6 +13,7 @@ INVENTORY_DIR="${ANSIBLE_DIR}/inventory"
 CONFIG_DIR="${INVENTORY_DIR}/group_vars/controller_hosts"
 CONFIG_FILE="${CONFIG_DIR}/config.yml"
 VAULT_FILE="${CONFIG_DIR}/vault.yml"
+SERVICE_VAULT_FILE="${INVENTORY_DIR}/group_vars/all/vault.yml"
 
 echo "Bootstrapping Ansible in venv: ${VENV_PATH}"
 
@@ -44,7 +45,7 @@ cat > "${INVENTORY_DIR}/inventory.ini" <<EOF
 EOF
 
 # 3.a Skip if already initialized
-if [[ -f "${CONFIG_FILE}" && -f "${VAULT_FILE}" ]]; then
+if [[ -f "${CONFIG_FILE}" && -f "${VAULT_FILE}" && -f "${SERVICE_VAULT_FILE}" ]]; then
   echo "Configuration & vault already exist. Skipping interactive setup."
   exec sudo -u "${TARGET_USER}" env ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" \
     "ansible-playbook" -i "${INVENTORY_DIR}/inventory.ini" "${ANSIBLE_DIR}/playbooks/bootstrap_inventory.yml" "$@"

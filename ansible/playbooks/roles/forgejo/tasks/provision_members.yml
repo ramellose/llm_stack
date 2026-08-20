@@ -1,0 +1,52 @@
+---
+# Consumes: team_member_specs (list of {org, team, user})
+# Requires: forgejo_admin_token in scope.
+# Users and teams must already exist (ordering guarantee from the caller).
+
+- name: "List teams for referenced orgs"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/orgs/{{ item }}/teams"
+    method: GET
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [200]
+  register: fj_team_lookups
+  loop: "{{ team_member_specs | map(attribute='org') | unique | list }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Build org/team -> id map"
+  ansible.builtin.set_fact:
+    _team_id_map: >-
+      {{ dict(
+           fj_team_lookups.results
+           | map(attribute='item') | list
+           | zip(
+               fj_team_lookups.results
+               | map(attribute='json') | list
+             )
+         ) }}
+
+- name: "Assert referenced teams exist"
+  ansible.builtin.assert:
+    that: "_team_id_map[item.org] | selectattr('name', 'equalto', item.team) | list | length > 0"
+    fail_msg: "Membership spec references team '{{ item.org }}/{{ item.team }}' which does not exist in the org."
+  loop: "{{ team_member_specs }}"
+  loop_control:
+    loop_var: item
+    
+- name: "Reconcile team membership"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_base }}/teams/{{ _tid }}/members/{{ member.user }}"
+    method: PUT
+    headers:
+      Authorization: "token {{ forgejo_admin_token }}"
+    status_code: [204]
+  vars:
+    _matches: "{{ _team_id_map[member.org] | selectattr('name', 'equalto', member.team) | list }}"
+    _tid: "{{ (_matches | first).id }}"
+  loop: "{{ team_member_specs }}"
+  loop_control:
+    loop_var: member
+    label: "{{ member.org }}/{{ member.team }}/{{ member.user }}"
+  when: _matches | length > 0

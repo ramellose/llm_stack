@@ -8,7 +8,7 @@ repo_root: "{{ ansible_root | dirname }}"
 inventory_dir: "{{ project_root }}/inventory"
 roles_dir: "{{ playbook_dir }}/roles"
 network_vars_path: "{{ inventory_dir }}/group_vars/networkservices"
-services_vars_path: "{{ inventory_dir }}/group_vars/services"
+services_vars_path: "{{ inventory_dir }}/group_vars/all"
 controller_vars_path: "{{ inventory_dir }}/group_vars/controller_hosts"
 
 # Initial configuration;

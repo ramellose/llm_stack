@@ -1,0 +1,6 @@
+---
+- name: Install and deploy Forgejo
+  hosts: forgejoserver
+  become: true
+  roles:
+    - forgejo

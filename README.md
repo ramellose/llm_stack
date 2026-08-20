@@ -28,7 +28,7 @@ llm_stack/
 ├── ansible/
 │   ├── inventory/
 │   ├── playbooks/
-│   └── roles/{caddy,docker_engine,docker_stack,hardening,llama_cpp,unbound}
+│   └── roles/{caddy,controller,docker_engine,docker_stack,forgejo,hardening,llama_cpp,secrets,unbound}
 ├── opentofu/
 |   ├── modules/{lxc,storage}
 │   ├── main.tf
@@ -42,11 +42,9 @@ See the [docs](docs/README.md) for additional documentation.
 
 ## Planned milestones
 
-- Secrets provisioning using Vaultwarden
-- Forgejo git server with automatically provisioned service accounts for agents
 - Flexible deployment of MCP servers
 - MCP server using Proxmox and Ansible for sandboxed code execution
-- Prometheus and Grafana as Docker services
+- CI/CD setup for Forgejo using sandbox MCP server
 - Make Caddy DNS challenge optional for fully offline deployment
 
 Some of these milestones will likely be released as separate repositories. 

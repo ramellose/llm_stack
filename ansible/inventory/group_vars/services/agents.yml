@@ -1,0 +1,67 @@
+# Secrets lifecycle
+secrets_controller_host: controller_node_1
+vault_domain: "https://vaultwarden.{{ base_domain }}"
+vault_admin_mail: "admin@{{ base_domain }}"
+
+agents:
+  - name: worker
+    description: "Executes planned tasks, opens PRs"
+    forgejo:
+      user: worker
+      org: platform
+      role: member
+      teams:
+        - workers
+    tokens:
+      - name: worker_token
+        bw_item: forgejo-worker-token
+        scopes:
+          - write:repository
+          - write:issue
+          - read:organization
+
+  - name: reviewer
+    description: "Reviews PRs, posts comments, reads CI"
+    forgejo:
+      user: reviewer
+      org: platform
+      role: member
+      teams: 
+        - reviewers
+    tokens:
+      - name: reviewer_token
+        bw_item: forgejo-reviewer-token
+        scopes:
+          - read:repository
+          - write:issue
+          - read:organization
+
+  - name: runner
+    description: "CI job runner registration identity"
+    forgejo:
+      user: runner
+      org: platform
+      role: member
+      teams: 
+        - runners
+    tokens:
+      - name: runner_token
+        bw_item: forgejo-runner-token
+        scopes:
+          - write:package
+          - read:repository
+
+  - name: sandbox
+    description: "Sandbox-plane identity"
+    forgejo:
+      user: sandbox
+      org: platform
+      role: member
+      teams:
+        - sandbox
+    tokens:
+      - name: sandbox_token
+        bw_item: forgejo-sandbox-token
+        scopes:
+          - read:package
+          - read:repository

@@ -1,6 +1,6 @@
 # llm_stack
 
-IaC for a bootstrapped local LLM stack. This stack serves as a reproducible and offline-capable (after initial provisioning) environment for testing agents, pipeline orchestration, MCP servers and security boundaries.
+IaC for a bootstrapped local LLM stack. This stack serves as a reproducible and offline-capable (after initial provisioning) environment for testing agents, pipeline orchestration, MCP servers and security boundaries. 
 
 <img width="150" height="159" align="right" alt="Photo of a small 3D-printed 10 inch server rack in teal and magenta. From top to bottom, the rack contains a travel router, two SBCs, a mini PC and a switch." src="docs/photo.png" />
 
@@ -20,6 +20,7 @@ Briefly:
     - A `dockerservices` host for deploying Open WebUI, ntfy and Vaultwarden
 - Ansible provisions and configures services on bare-metal and virtualized hosts
 - A travel router provides offline WiFi; Unbound DNS resolves internal service domains without external dependencies
+- End users can be provisioned with accounts for all services & a LXC for running the `pi` harness
 
 Structure: 
 
@@ -28,7 +29,7 @@ llm_stack/
 ├── ansible/
 │   ├── inventory/
 │   ├── playbooks/
-│   └── roles/{caddy,controller,docker_engine,docker_stack,forgejo,hardening,llama_cpp,secrets,unbound}
+│   └── roles/{caddy,controller,docker_engine,docker_stack,fancontrol,forgejo,hardening,llama_cpp,monitoring,pages,pidev,secrets,unbound}
 ├── opentofu/
 |   ├── modules/{lxc,storage}
 │   ├── main.tf

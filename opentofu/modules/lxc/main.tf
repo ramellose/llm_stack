@@ -1,3 +1,11 @@
+terraform {
+  required_providers {
+    proxmox = {
+      source = "bpg/proxmox"
+    }
+  }
+}
+
 resource "proxmox_virtual_environment_container" "this" {
   node_name    = var.proxmox_node
   unprivileged = true
@@ -42,7 +50,10 @@ resource "proxmox_virtual_environment_container" "this" {
     }
     
     user_account {
-      keys = [trimspace(var.ssh_pub_key)]
+      keys = concat(
+        [trimspace(var.ssh_pub_key)],
+        [for k in var.additional_ssh_pub_keys : trimspace(k)]
+      )
     }
   }
 

@@ -7,27 +7,43 @@ llama_cpp_bin_dir: "{{ llama_cpp_build_dir }}/bin"
 llama_cpp_models_dir: /opt/models
 llama_cpp_huggingface_cli: /root/.local/bin/hf
 llama_cpp_version: b9541  # or a branch
-llama_cpp_n_gpu_layers: 0 # 999 for offloading all to GPU
-llama_cpp_ctx_size: 8192
+llama_cpp_preset_path: "{{ llama_cpp_models_dir }}/presets.ini"
+
+# Global defaults
+llama_cpp_cache_type: q8_0
+llama_cpp_n_gpu_layers: 0
+llama_cpp_default_ctx: 8192
+
 llama_models:
   - name: bonsai-8b
     hf_repo: prism-ml/Bonsai-8B-gguf
     hf_file: Bonsai-8B-Q1_0.gguf
     download: true
+    ctx_size: 16384
   - name: gemma-4-12b
     hf_repo: unsloth/gemma-4-12b-it-GGUF
     hf_file: gemma-4-12b-it-Q4_K_M.gguf
     download: true
+    ctx_size: 16384
   - name: qwen2.5-coder-7b-q4
     hf_repo: bartowski/Qwen2.5-Coder-7B-Instruct-GGUF
     hf_file: Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
     download: true 
+    ctx_size: 16384
   - name: qwen3.5-9b
     hf_repo: unsloth/Qwen3.5-9B-GGUF
     hf_file: Qwen3.5-9B-Q4_K_M.gguf
     download: true 
+    ctx_size: 16384
   - name: mistral-7b
     hf_repo: TheBloke/Mistral-7B-Instruct-v0.1-GGUF
     hf_file: mistral-7b-instruct-v0.1.Q4_K_M.gguf
     download: true
+    ctx_size: 16384
+
 llama_cpp_default_model: qwen3.5-9b
+
+# Swap related
+swap_file_path: /swapfile
+swap_file_size: 16G
+swap_swappiness: 10

@@ -14,3 +14,11 @@ default_lxc_disk      = 20
 default_vm_cpu        = 4
 default_vm_ram        = 8192
 default_vm_disk       = 40
+
+# --- Pidev containers (one LXC per human user) ---
+# Rendered by the pidev role (roles/pidev/tasks/main.yml) as fact `pidev_tfvars`.
+# Left out entirely when the fact is absent (e.g. plain `apply_tofu.yml` runs),
+# in which case the HCL default `stack_pidev = []` applies.
+{% if pidev_tfvars is defined and pidev_tfvars | length > 0 %}
+stack_pidev = {{ pidev_tfvars | tojson }}
+{% endif %}

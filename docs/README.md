@@ -15,7 +15,6 @@ graph TD
 
 1. Clone and navigate to the repository folder
 2. Run `./scripts/bootstrap.sh` (interactive config and vault setup)
-  - To run only LXC provisioning, use `ansible-playbook playbooks/apply_tofu.yml`
 3. Run `ansible-playbook playbooks/hardening.yml -i inventory/static_hosts.yml -i inventory/tofu_generated.json` (secures SSH access)
 4. Deploy services:
     - `ansible-playbook playbooks/deploy_dns.yml`
@@ -28,11 +27,10 @@ The next steps set up Vaultwarden and Forgejo for machine users.
 5. Open vaultwarden.<domain.org> and log in as admin using the password you set in `./scripts/bootstrap.sh`
 6. Get the client ID and API key from the Vaultwarden settings
 7. Set them in the vault using `./scripts/vault_api.sh`
-8. Set up the secrets lifecycle: `ansible-playbook playbooks/secrets_lifecycle.yml`
-9. Set up a Forgejo server with machine users: `ansible-playbook playbooks/deploy_forgejo.yml` 
-10. Deploy documentation for end users with `ansible-playbook playbooks/deploy_pages.yml`
+8. Provision new (machine) user accounts using `./scripts/provision_users.sh`
+9. Deploy documentation for end users with `ansible-playbook playbooks/deploy_pages.yml`
 
-These additional steps create Vaultwarden and Forgejo accounts for each machine user specified in `group_vars/services/agents.yml`. Agents can retrieve credentials they need from their own Vaultwarden account, removing the need to store credentials in plain text. Moreover, the Forgejo server can be used to have agents contribute to code, with the default agent profiles restricting their permissions. End-user documentation can be found on `docs.<domain.org>`. 
+These additional steps create Vaultwarden and Forgejo accounts for each (machine) user specified in `group_vars/services/agents.yml`. Agents can retrieve credentials they need from their own Vaultwarden account, removing the need to store credentials in plain text. Moreover, the Forgejo server can be used to have agents contribute to code, with the default agent profiles restricting their permissions. End-user documentation can be found on `docs.<domain.org>`. 
 
 **Documentation**
 

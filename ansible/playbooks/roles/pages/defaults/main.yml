@@ -1,0 +1,4 @@
+docs_dir: "{{ playbook_dir }}/roles/pages/files"
+docs_venv: /opt/docs_venv
+caddy_host: networkservices01
+docs_webroot: /srv/docs

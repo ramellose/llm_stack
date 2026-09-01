@@ -1,0 +1,76 @@
+# Local git server 
+
+This stack deploys a local Forgejo server. 
+If you have ever worked with GitHub, that is a cloud platform for `git`. 
+But it is not necessary to run `git` in the cloud: you can run it locally too. 
+
+Version control tools like `git` are extremely helpful when working with agents. 
+These tools have been designed so that multiple people can collaborate on the same project. 
+The same needs to be done when reviewing work done by agents. 
+
+You can access Forgejo through [Forgejo](https://forgejo.{{ base_domain }}). 
+This is a local URL; it will only work while you are connected to the network. 
+So be sure to download your data if you want to keep it. 
+
+## Create a repository and add files
+
+Use the `+` sign in the top corner to create a new repository. 
+You can use `Add file` to upload files manually. However, it is a lot easier to use `git` directly. 
+
+After you have created your repository, copy the `HTTPS` entry and run this: 
+
+```
+git clone https://forgejo.{{ base_domain }}/<username>/<projectname>.git
+git remote add origin https://forgejo.{{ base_domain }}/<username>/<projectname>.git
+```
+
+This creates a new directory with the name of your project. 
+You can then add files:
+
+```
+cd <projectname>
+git add .   # Add all of them, or add specific files by naming them 
+git commit -m "Write a descriptive message"
+git push origin main
+```
+
+This puts your files on the `main` branch. 
+Note that pushing directly to `main` is usually a bad idea, and you want to use branches instead. 
+
+## Branches and pull requests
+
+A branch is like a version of the project. 
+You can work on multiple at the same time, and switch to them like so: 
+
+```
+git checkout -b development
+git add . 
+git commit -m "Test version"
+git push origin development
+```
+
+You can now go to Forgejo and open a pull request. 
+A pull request shows the differences between the branches (versions). 
+If you merge from `development` to `main`, the changes you made will be added to the `main` branch. 
+
+If you are working with agents, pull requests are helpful because they show exactly what the agent did. 
+You can easily make additional changes or simply reject the pull request if the agent's outputs are not useful. 
+If you allow an agent to work directly on your project, it can be difficult to undo bad changes. 
+
+## Learning more 
+
+Version management software is very powerful and you can do a lot more than just control how you share files. 
+These are just the basics that allow you to use `git` to manage agent outputs. 
+
+Here are some examples of other things you can do: 
+
+- Use branch protection rules to stop agents (and other people) from overwriting work
+- Go back to older versions 
+- Automatically run tests on code 
+- Set up an agent to automatically review work from other agents 
+- Roll out accepted changes automatically (e.g. updating a website)
+
+LLMs are great at setting up workflows for this. 
+If you want to have private projects in `git`, many cloud platforms require payments for more advanced automation features. 
+That is not the case if you have a local server - there, you can experiment freely. 
+However, keep in mind that `git` is not a backup tool - you can still lose your data if your storage breaks or your agent deletes it! 

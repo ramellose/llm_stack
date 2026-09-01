@@ -1,0 +1,6 @@
+---
+- name: Deploy monitoring
+  hosts: bare_metal
+  become: true
+  roles:
+    - monitoring

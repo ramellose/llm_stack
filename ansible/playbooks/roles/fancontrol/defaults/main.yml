@@ -1,0 +1,46 @@
+---
+# Default duty percent after initializing overlay
+fan_pwm_duty_percent: 70
+
+# Hardware specific!
+fan_pwm_soc_compatible: "rockchip,rk3399"
+fan_pwm_dt_label: "pwm0"
+fan_pwm_hw_address: "ff420000" # GPIO4_C2 / PWM0 hardware address
+fan_pwm_overlay_dir: "/boot/dtb/rockchip/overlay"
+fan_pwm_overlay_name: "pwm0-rock4"
+fan_pwm_period_ns: 40000
+fan_pwm_polarity: "normal"
+fan_pwm_channel: 0
+fan_pwm_compile_overlay: true
+
+# Polling configuration
+fan_poll_interval: 5
+fan_http_timeout: 2
+fan_fail_pct: 100
+fan_exporter_port: 9100 
+
+# Sensor priority - not all boards have all sensors
+cpu_zone_priority:
+  - x86_pkg_temp     # x86 boxes
+  - soc-thermal      # Rockchip and many ARM SoCs
+  - cpu-thermal      # Pi-class and other ARM
+  - littlecore-thermal   # fallback if only per-cluster zones exist
+
+fan_curve:
+  - {temp: 45, pct: 20}
+  - {temp: 60, pct: 50}
+  - {temp: 70, pct: 100}
+
+# Dashboard
+fan_state_path: /run/fancontrol/state.json
+dashboard_refresh: 2
+dashboard_stale_after: "{{ (fan_poll_interval | int) * 3 }}"
+dashboard_title: "LLM stack temperatures"
+dashboard_margin: 2
+
+dashboard_text_scale: large
+dashboard_font_by_scale:
+  normal: "Lat2-Terminus16"
+  large:  "Lat2-Terminus28x14"
+  xlarge: "Lat2-Terminus32x16"
+dashboard_console_font: "{{ dashboard_font_by_scale[dashboard_text_scale] }}"

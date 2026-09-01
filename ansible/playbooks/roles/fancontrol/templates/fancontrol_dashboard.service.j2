@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Cluster fan/temp dashboard on the HDMI console (tty1)
+After=systemd-user-sessions.service fancontrol_daemon.service
+# Not a hard Requires on the daemon: the dashboard shows a "waiting" panel if
+# the daemon isn't up yet, which is more useful than refusing to start.
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+Environment=TERM=linux
+# Own tty1 directly.
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYReset=yes
+TTYVTDisallocate=yes
+# Disable console blanking so the display never sleeps.
+ExecStartPre=/usr/bin/setterm --blank 0 --powersave off --cursor off
+# Set a large console font so text is readable on the small HDMI panel. The
+# '-' makes a missing font non-fatal (dashboard still runs at default size).
+ExecStartPre=-/usr/bin/setfont {{ dashboard_console_font }}
+ExecStart=/usr/bin/env python3 /usr/local/bin/fancontrol_dashboard.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,117 @@
+---
+###########################
+# Initiallize fan control #
+###########################
+- name: Install the fan PWM setup script
+  ansible.builtin.template:
+    src: fancontrol_setup.sh.j2
+    dest: /usr/local/bin/fancontrol_setup.sh
+    mode: "0755"
+  notify: Restart fan pwm service
+
+- name: Install the fan PWM systemd unit
+  ansible.builtin.template:
+    src: fancontrol.service.j2
+    dest: /etc/systemd/system/fancontrol.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart fan pwm service
+
+- name: Enable the fan PWM service (starts on boot)
+  ansible.builtin.systemd:
+    name: fancontrol.service
+    enabled: true
+    daemon_reload: true
+
+- name: Ensure the fan PWM service has been started
+  ansible.builtin.systemd:
+    name: fancontrol.service
+    state: started
+
+- name: Read back the live PWM state for confirmation
+  ansible.builtin.command: cat /sys/kernel/debug/pwm
+  register: fan_pwm_debug
+  changed_when: false
+  failed_when: false
+
+- name: Show the live PWM state
+  ansible.builtin.debug:
+    var: fan_pwm_debug.stdout_lines
+
+########################################
+# Set up temperature-aware fan control #
+########################################
+- name: Install the fan control daemon
+  ansible.builtin.template:
+    src: fancontrol_daemon.py.j2
+    dest: /usr/local/bin/fancontrol_daemon.py
+    mode: "0755"
+  notify: Restart fan control daemon
+ 
+- name: Install the fan control daemon systemd unit
+  ansible.builtin.template:
+    src: fancontrol_daemon.service.j2
+    dest: /etc/systemd/system/fancontrol_daemon.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart fan control daemon
+ 
+- name: Enable and start the fan control daemon
+  ansible.builtin.systemd:
+    name: fancontrol_daemon.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+#############
+# Dashboard #
+#############
+- name: Install the dashboard script
+  ansible.builtin.template:
+    src: fancontrol_dashboard.py.j2
+    dest: /usr/local/bin/fancontrol_dashboard.py
+    mode: "0755"
+  notify: Restart fan dashboard
+ 
+- name: Ensure rich is installed for the dashboard
+  ansible.builtin.pip:
+    name: rich
+    extra_args: --break-system-packages
+ 
+- name: Install the dashboard systemd unit
+  ansible.builtin.template:
+    src: fancontrol_dashboard.service.j2
+    dest: /etc/systemd/system/fancontrol_dashboard.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart fan dashboard
+ 
+# Stop getty from drawing a login on tty1 — it and the dashboard would fight
+# over the same console. SSH is unaffected (it uses pts/*, not tty1).
+- name: Disable getty on tty1 so the dashboard owns the console
+  ansible.builtin.systemd:
+    name: getty@tty1.service
+    enabled: false
+    state: stopped
+    masked: true
+ 
+- name: Enable and start the dashboard
+  ansible.builtin.systemd:
+    name: fancontrol_dashboard.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+## Confirm state
+- name: Read back the live PWM state for confirmation
+  ansible.builtin.command: cat /sys/kernel/debug/pwm
+  register: fan_pwm_debug
+  changed_when: false
+  failed_when: false
+ 
+- name: Show the live PWM state
+  ansible.builtin.debug:
+    var: fan_pwm_debug.stdout_lines

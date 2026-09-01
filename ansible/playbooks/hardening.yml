@@ -1,6 +1,25 @@
 ---
+- name: Detect reachable connection user
+  hosts: all
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Probe admin connectivity
+      ansible.builtin.raw: "echo probe"
+      vars:
+        ansible_user: admin
+      register: admin_probe
+      ignore_unreachable: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Pin ansible_user based on probe
+      ansible.builtin.set_fact:
+        ansible_user: "{{ 'admin' if (admin_probe is not unreachable and admin_probe is succeeded) else 'root' }}"
+
 - name: Apply hardening
   hosts: all
+  gather_facts: true
   become: true
   roles:
     - hardening

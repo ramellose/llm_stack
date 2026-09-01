@@ -38,3 +38,4 @@ These additional steps create Vaultwarden and Forgejo accounts for each machine 
 - [Architecture](docs/architecture.md)
 - [Prerequisites](docs/prerequisites.md)
 - [Security](docs/security.md)
+- [Fan control](docs/fancontrol.md)

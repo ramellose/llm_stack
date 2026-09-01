@@ -1,0 +1,37 @@
+---
+- name: Set up device tree overlay
+  block:
+    - name: Install device-tree-compiler (provides dtc)
+      ansible.builtin.apt:
+        name: device-tree-compiler
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Ensure the boot overlay directory exists
+      ansible.builtin.file:
+        path: "{{ fan_pwm_overlay_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Render the overlay source (.dts) from template
+      ansible.builtin.template:
+        src: overlay.dts.j2
+        dest: "/usr/local/src/{{ fan_pwm_overlay_name }}.dts"
+        mode: "0644"
+      register: fan_pwm_dts
+
+    - name: Compile the overlay to .dtbo
+      ansible.builtin.command:
+        cmd: >-
+          dtc -@ -I dts -O dtb
+          -o {{ fan_pwm_overlay_dir }}/{{ fan_pwm_overlay_name }}.dtbo
+          /usr/local/src/{{ fan_pwm_overlay_name }}.dts
+      when:
+        - fan_pwm_dts is changed
+      notify: Reapply fan pwm overlay
+
+    - name: Apply overlay changes now
+      ansible.builtin.meta: flush_handlers
+
+  when: fan_pwm_compile_overlay | bool

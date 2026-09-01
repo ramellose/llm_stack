@@ -32,6 +32,11 @@ all:
     services:
       children:
         networkservices:
+    bare_metal:
+	      children:
+	        proxmox_hosts:
+	        controller_hosts:
+	        llama_hosts:
 {% endif %}
 {% set dockerservices_hosts = groups['all'] | select('search', 'dockerservices') | list %}
 {% if dockerservices_hosts | length > 0 %}

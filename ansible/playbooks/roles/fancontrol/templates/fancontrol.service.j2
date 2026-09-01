@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Enable {{ fan_pwm_soc_compatible }} {{ fan_pwm_dt_label }} and set fan duty cycle
+After=local-fs.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fancontrol_setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

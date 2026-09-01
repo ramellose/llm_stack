@@ -39,3 +39,9 @@ service_config:
   # Non-Docker
   forgejo:
     kind: forgejo
+
+  docs:
+    kind: static
+    caddy:
+      template: docs
+      root: /srv/docs

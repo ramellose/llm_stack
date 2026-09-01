@@ -30,8 +30,9 @@ The next steps set up Vaultwarden and Forgejo for machine users.
 7. Set them in the vault using `./scripts/vault_api.sh`
 8. Set up the secrets lifecycle: `ansible-playbook playbooks/secrets_lifecycle.yml`
 9. Set up a Forgejo server with machine users: `ansible-playbook playbooks/deploy_forgejo.yml` 
+10. Deploy documentation for end users with `ansible-playbook playbooks/deploy_pages.yml`
 
-These additional steps create Vaultwarden and Forgejo accounts for each machine user specified in `group_vars/services/agents.yml`. Agents can retrieve credentials they need from their own Vaultwarden account, removing the need to store credentials in plain text. Moreover, the Forgejo server can be used to have agents contribute to code, with the default agent profiles restricting their permissions. 
+These additional steps create Vaultwarden and Forgejo accounts for each machine user specified in `group_vars/services/agents.yml`. Agents can retrieve credentials they need from their own Vaultwarden account, removing the need to store credentials in plain text. Moreover, the Forgejo server can be used to have agents contribute to code, with the default agent profiles restricting their permissions. End-user documentation can be found on `docs.<domain.org>`. 
 
 **Documentation**
 

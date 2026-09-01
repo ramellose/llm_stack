@@ -1,5 +1,5 @@
 ---
-- name: Deploy fancontrol (check README.md in role!)
+- name: Deploy fancontrol (check fancontrol.md in docs!)
   hosts: controller_hosts
   become: true
   connection: local

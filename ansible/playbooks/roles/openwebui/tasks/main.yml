@@ -1,0 +1,149 @@
+---
+# Provision Open WebUI accounts for human users (humans in
+# inventory/group_vars/services/humans.yml):
+#   1. ensure the stack admin account exists (first signup becomes owner)
+#   2. create each human's account via the admin API (idempotent)
+#   3. store each login in the user's own Vaultwarden account
+# The container itself is deployed by the docker_stack role
+# (playbooks/deploy_services.yml).
+
+- name: Check whether Open WebUI runs on this host
+  ansible.builtin.set_fact:
+    openwebui_on_host: >-
+      {{ (services_on_host | default([])
+          | selectattr('service', 'equalto', 'openwebui') | list) | length > 0 }}
+
+- name: Skip host without Open WebUI
+  ansible.builtin.meta: end_host
+  when: not openwebui_on_host
+
+- name: Wait for Open WebUI API
+  ansible.builtin.uri:
+    url: "https://{{ openwebui_domain }}/health"
+    method: GET
+  register: owui_ping
+  until: owui_ping.status == 200
+  retries: 30
+  delay: 5
+
+- name: Ensure admin Vaultwarden session
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: session
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    bw_email: "{{ vault_admin_mail }}"
+    bw_master_password: "{{ hostvars[secrets_controller_host].vault_vaultwarden_secret }}"
+
+- name: "Reset Open WebUI admin-vault secret specs"
+  ansible.builtin.set_fact:
+    owui_admin_secrets: []
+
+- name: "Add admin password spec"
+  ansible.builtin.set_fact:
+    owui_admin_secrets: >-
+      {{ owui_admin_secrets + [{
+        'name': 'openwebui-admin-password',
+        'username': vault_admin_mail,
+        'generate_cmd': vw_gen_cmd
+      }] }}
+
+- name: "Add per-human password specs"
+  ansible.builtin.set_fact:
+    owui_admin_secrets: >-
+      {{ owui_admin_secrets + [{
+        'name': 'openwebui-password-' + item.name,
+        'username': item.name + '@' + base_domain,
+        'generate_cmd': vw_gen_cmd
+      }] }}
+  loop: "{{ humans | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Ensure Open WebUI passwords exist in admin vault"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: insert_secret
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    vw_overwrite: false
+  loop: "{{ owui_admin_secrets }}"
+  loop_control:
+    loop_var: secret
+    label: "{{ secret.name }}"
+
+- name: "Reset vault-account specs"
+  ansible.builtin.set_fact:
+    owui_vault_account_secrets: []
+
+- name: "Build vault-account specs"
+  ansible.builtin.set_fact:
+    owui_vault_account_secrets: >-
+      {{ owui_vault_account_secrets + [{'name': 'vault-account-' + item.name}] }}
+  loop: "{{ humans | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Get human Vaultwarden master passwords (admin vault)"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: get_secret
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  loop: "{{ owui_vault_account_secrets }}"
+  loop_control:
+    loop_var: secret
+    label: "{{ secret.name }}"
+
+- name: "Probe Open WebUI admin login"
+  ansible.builtin.uri:
+    url: "{{ openwebui_api_base }}/auths/signin"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ vault_admin_mail }}"
+      password: "{{ vw_resolved['openwebui-admin-password'] }}"
+    status_code: [200, 400, 401]
+    return_content: true
+  register: owui_admin_probe
+  no_log: true
+
+- name: "Create Open WebUI admin account (first signup becomes owner)"
+  ansible.builtin.uri:
+    url: "{{ openwebui_api_base }}/auths/signup"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ openwebui_admin_name }}"
+      email: "{{ vault_admin_mail }}"
+      password: "{{ vw_resolved['openwebui-admin-password'] }}"
+    status_code: [200, 400]
+  when: owui_admin_probe.status != 200
+  no_log: true
+
+- name: "Authenticate as Open WebUI admin"
+  ansible.builtin.uri:
+    url: "{{ openwebui_api_base }}/auths/signin"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ vault_admin_mail }}"
+      password: "{{ vw_resolved['openwebui-admin-password'] }}"
+    status_code: [200]
+    return_content: true
+  register: owui_admin_auth
+  no_log: true
+
+- name: "Set Open WebUI admin token"
+  ansible.builtin.set_fact:
+    owui_admin_token: "{{ owui_admin_auth.json.token }}"
+  no_log: true
+
+- name: "Provision Open WebUI accounts for humans"
+  ansible.builtin.include_tasks: provision_user.yml
+  loop: "{{ humans | default([]) }}"
+  loop_control:
+    loop_var: human
+    label: "{{ human.name }}"

@@ -1,0 +1,8 @@
+---
+# Open WebUI is deployed as a docker compose stack by the docker_stack role
+# (service_config['openwebui'], subdomain `chat`, see opentofu/variables.tf).
+# This role only provisions accounts; the container is deployed by
+# playbooks/deploy_services.yml.
+openwebui_domain: "chat.{{ base_domain }}"
+openwebui_api_base: "https://{{ openwebui_domain }}/api/v1"
+openwebui_admin_name: "Stack Admin"

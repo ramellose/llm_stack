@@ -1,6 +1,6 @@
 # llm_stack
 
-IaC for a bootstrapped local LLM stack. This stack serves as a reproducible and offline-capable (after initial provisioning) environment for testing agents, pipeline orchestration, MCP servers and security boundaries. 
+IaC for a bootstrapped local LLM stack. This stack serves as a reproducible and offline-capable (after initial provisioning) environment for testing agents, pipeline orchestration, MCP servers and security boundaries. Automated provisioning allows end users to experiment with these systems without requiring extensive manual configuration. 
 
 <img width="150" height="159" align="right" alt="Photo of a small 3D-printed 10 inch server rack in teal and magenta. From top to bottom, the rack contains a travel router, two SBCs, a mini PC and a switch." src="docs/photo.png" />
 

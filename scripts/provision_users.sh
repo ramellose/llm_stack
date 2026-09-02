@@ -5,9 +5,10 @@ set -euo pipefail
 #   1. add them to ansible/inventory/group_vars/services/humans.yml
 #   2. Vaultwarden account            (playbooks/secrets_lifecycle.yml)
 #   3. Forgejo account + teams        (playbooks/deploy_forgejo.yml)
-#   4. pidev LXC + vault SSH key      (playbooks/provision_pidev.yml)
-#   5. harden LXC + refresh inventory (playbooks/hardening.yml)
-#   6. install pi harness             (playbooks/deploy_pidev.yml)
+#   4. Open WebUI account + vault pw  (playbooks/deploy_openwebui.yml)
+#   5. pidev LXC + vault SSH key      (playbooks/provision_pidev.yml)
+#   6. harden LXC + refresh inventory (playbooks/hardening.yml)
+#   7. install pi harness             (playbooks/deploy_pidev.yml)
 #
 # Requires a bootstrapped and already-hardened stack (post_harden.yml must
 # exist). All steps are idempotent, so re-running is safe and composes with
@@ -83,21 +84,27 @@ run_playbook "${PLAYBOOKS_DIR}/secrets_lifecycle.yml"
 # 3. Forgejo users, vault passwords, team membership (idempotent)
 run_playbook "${PLAYBOOKS_DIR}/deploy_forgejo.yml"
 
-# 4. Per-user SSH keys + OpenTofu LXC creation + vault SSH-key items
+# 4. Open WebUI accounts (admin + per-human), vault passwords (idempotent)
+run_playbook "${PLAYBOOKS_DIR}/deploy_openwebui.yml"
+
+# 5. Per-user SSH keys + OpenTofu LXC creation + vault SSH-key items
 run_playbook "${PLAYBOOKS_DIR}/provision_pidev.yml"
 
-# 5. Harden new LXCs (as root, controller key), create admin user,
+# 6. Harden new LXCs (as root, controller key), create admin user,
 #    regenerate post_harden.yml so the `pidev` group enters the default inventory
 run_playbook \
   "${PLAYBOOKS_DIR}/hardening.yml" \
   -i "${ANSIBLE_DIR}/inventory/static_hosts.yml" \
   -i "${ANSIBLE_DIR}/inventory/tofu_generated.json"
 
-# 6. Per-user key in admin's authorized_keys + pi harness install
+# 7. Per-user key in admin's authorized_keys + pi harness install
 run_playbook "${PLAYBOOKS_DIR}/deploy_pidev.yml"
 
 echo
 echo "Done. For each new user (${*}):"
-echo "  1. Log into Vaultwarden and open item 'pidev-ssh-key-<user>'"
+echo "  1. Log into Vaultwarden"
+echo "     - 'openwebui-password-<user>' -> Open WebUI account (chat.<base_domain>)"
+echo "     - 'forgejo-password-<user>'   -> Forgejo account"
+echo "     - 'pidev-ssh-key-<user>'      -> SSH key for the pidev LXC"
 echo "  2. Save the key to ~/.ssh/id_pidev (chmod 600) and copy the notes into ~/.ssh/config"
 echo "  3. ssh pidev"

@@ -1,0 +1,63 @@
+---
+# Create {{ human.name }}'s Open WebUI account (if missing) and store the
+# login in their own Vaultwarden account. Mirrors the session + insert_secret
+# pattern of roles/forgejo/tasks/provision_user.yml.
+# Requires: owui_admin_token and vw_resolved (admin vault) in scope.
+
+- name: "List Open WebUI users [{{ human.name }}]"
+  ansible.builtin.uri:
+    url: "{{ openwebui_api_base }}/admin/users"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ owui_admin_token }}"
+    status_code: [200]
+  register: owui_users
+
+- name: "Resolve existing Open WebUI account [{{ human.name }}]"
+  ansible.builtin.set_fact:
+    owui_existing: >-
+      {{ owui_users.json
+         | selectattr('email', 'equalto', human.name ~ '@' ~ base_domain)
+         | list | first | default(none) }}
+
+- name: "Create Open WebUI account [{{ human.name }}]"
+  ansible.builtin.uri:
+    url: "{{ openwebui_api_base }}/auths/add"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ owui_admin_token }}"
+    body_format: json
+    body:
+      email: "{{ human.name }}@{{ base_domain }}"
+      name: "{{ human.name }}"
+      password: "{{ vw_resolved['openwebui-password-' + human.name] }}"
+      role: user
+    status_code: [200, 201]
+  when: owui_existing is none
+  no_log: true
+
+- name: "Set [{{ human.name }}] Vaultwarden session"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: session
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    bw_email: "{{ human.name }}@{{ base_domain }}"
+    bw_master_password: "{{ vw_resolved['vault-account-' + human.name] }}"
+
+- name: "Store Open WebUI login in [{{ human.name }}] Vaultwarden"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: insert_secret
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    vw_overwrite: false
+  loop:
+    - name: "openwebui-password-{{ human.name }}"
+      username: "{{ human.name }}@{{ base_domain }}"
+      value: "{{ vw_resolved['openwebui-password-' + human.name] }}"
+  loop_control:
+    loop_var: secret
+    label: "{{ secret.name }}"

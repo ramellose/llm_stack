@@ -1,0 +1,10 @@
+---
+humans:
+  - name: user01
+    description: "Human user"
+    forgejo:
+      user: user01
+      org: platform
+      role: member
+      teams:
+        - humans

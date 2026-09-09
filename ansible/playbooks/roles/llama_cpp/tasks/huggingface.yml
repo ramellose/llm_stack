@@ -27,3 +27,12 @@
   loop_control:
     label: "{{ item.name }}"
   when: item.download
+
+- name: Deploy llama.cpp model presets
+  ansible.builtin.template:
+    src: presets.ini.j2
+    dest: "{{ llama_cpp_preset_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart llama-server

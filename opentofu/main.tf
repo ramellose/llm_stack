@@ -72,7 +72,7 @@ module "stack_network" {
 
 locals {
   services_map = {
-    for idx, w in var.stack_services : w.hostname => {
+    for idx, w in concat(var.stack_services) : w.hostname => {
       hostname       = w.hostname
       ip_address     = cidrhost(var.subnet_range, 235 + idx)
       mac_address    = format("c2:00:00:00:00:%02x", idx + 1)
@@ -101,4 +101,39 @@ module "stack_service" {
   ssh_pub_key    = var.ssh_public_key
   network_bridge = var.network_bridge
   storage_pool   = module.storage.rootfs_pool
+}
+
+locals {
+  pidev_map = {
+    for idx, w in var.stack_pidev : w.hostname => {
+      hostname                = w.hostname
+      ip_address              = cidrhost(var.subnet_range, 240 + idx)
+      mac_address             = format("d2:00:00:00:00:%02x", idx + 1)
+      cpu_cores               = w.cpu_cores
+      memory_mb               = w.memory_mb
+      disk_size_gb            = w.disk_size_gb
+      additional_ssh_pub_keys = w.additional_ssh_pub_keys
+      base_domain             = var.base_domain
+    }
+  }
+}
+
+module "stack_pidev" {
+  source       = "./modules/lxc"
+  for_each     = local.pidev_map
+
+  template_file_id        = proxmox_virtual_environment_download_file.ubuntu_lxc_template.id
+  proxmox_node            = var.proxmox_node
+  hostname                = each.value.hostname
+  ip_address              = each.value.ip_address
+  mac_address             = each.value.mac_address
+  gateway_ip              = var.gateway_ip
+  dns_servers             = var.dns_servers
+  cpu_cores               = each.value.cpu_cores
+  memory_mb               = each.value.memory_mb
+  disk_size_gb            = each.value.disk_size_gb
+  ssh_pub_key             = var.ssh_public_key
+  additional_ssh_pub_keys = each.value.additional_ssh_pub_keys
+  network_bridge          = var.network_bridge
+  storage_pool            = module.storage.rootfs_pool
 }

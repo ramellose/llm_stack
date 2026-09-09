@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+# {{ ansible_managed }}
+#
+# Central fan control daemon. Runs ONLY on the controller node.
+# Polls each bare-metal node's node_exporter, selects that node's CPU/SoC
+# thermal zone by a priority list (so a swapped board is picked up
+# automatically), takes the max across the cluster, maps it through a fan
+# curve, and writes the PWM duty cycle on the locally-wired fan controller.
+#
+# Fail-safe: any node that is unreachable, times out, or exposes none of the
+# known CPU zone types contributes FAIL_PCT (default 100) to the max, so a
+# dead/unknown node drives fans UP, never down.
+
+import glob
+import json
+import os
+import re
+import socket
+import sys
+import tempfile
+import time
+import urllib.request
+
+# --- config (templated) ------------------------------------------------------
+POLL_INTERVAL = {{ fan_poll_interval }}
+HTTP_TIMEOUT  = {{ fan_http_timeout }}
+FAIL_PCT      = {{ fan_fail_pct }}
+HW_ADDRESS    = "{{ fan_pwm_hw_address }}"
+CHANNEL       = "{{ fan_pwm_channel }}"
+STATE_PATH    = "{{ fan_state_path }}"   # tmpfs; read by the dashboard
+
+# node endpoints from the bare_metal inventory group: (name, "ip:port").
+# Sorted by IP numerically at startup (see main()), so 30.9 precedes 30.10.
+NODES = [
+{% for host in groups['bare_metal'] %}
+    ("{{ host }}", "{{ hostvars[host]['ansible_host'] | default(host) }}:{{ fan_exporter_port }}"),
+{% endfor %}
+]
+
+# CPU/SoC thermal-zone `type` labels, in priority order. First match on a node
+# wins. Add new board types here, not in inventory.
+CPU_ZONE_PRIORITY = [
+{% for z in cpu_zone_priority %}
+    "{{ z }}",
+{% endfor %}
+]
+
+# fan curve: list of (temp_c, pct) breakpoints, ascending by temp.
+CURVE = [
+{% for p in fan_curve %}
+    ({{ p.temp }}, {{ p.pct }}),
+{% endfor %}
+]
+
+# --- metric parsing ----------------------------------------------------------
+# Matches: node_thermal_zone_temp{type="soc-thermal",zone="0"} 33.307
+_LINE = re.compile(
+    r'^node_thermal_zone_temp\{([^}]*)\}\s+([0-9.eE+-]+)\s*$'
+)
+_TYPE = re.compile(r'type="([^"]+)"')
+
+
+def parse_zone_temps(text):
+    """Return {type_label: temp_float} from a metrics payload."""
+    out = {}
+    for line in text.splitlines():
+        m = _LINE.match(line)
+        if not m:
+            continue
+        labels, value = m.group(1), m.group(2)
+        t = _TYPE.search(labels)
+        if not t:
+            continue
+        try:
+            out[t.group(1)] = float(value)
+        except ValueError:
+            continue
+    return out
+
+
+def select_cpu_temp(zone_temps):
+    """Pick (zone_name, temp) for the highest-priority CPU zone present."""
+    for zone in CPU_ZONE_PRIORITY:
+        if zone in zone_temps:
+            return zone, zone_temps[zone]
+    return None, None
+
+
+def scrape_node(name, endpoint):
+    """Return a per-node status dict for both control and the dashboard.
+
+    {"name", "addr", "temp": float|None, "zone": str|None, "ok": bool,
+     "error": str|None}
+    ok=False means unreachable or no known CPU zone -> treated as FAIL_PCT.
+    """
+    url = "http://%s/metrics" % endpoint
+    try:
+        with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as resp:
+            text = resp.read().decode("utf-8", "replace")
+    except Exception as e:
+        print("scrape failed for %s (%s): %s" % (name, endpoint, e),
+              file=sys.stderr)
+        return {"name": name, "addr": endpoint, "temp": None, "zone": None,
+                "ok": False, "error": "unreachable"}
+
+    zone, temp = select_cpu_temp(parse_zone_temps(text))
+    if temp is None:
+        have = ",".join(parse_zone_temps(text)) or "none"
+        print("no known CPU zone on %s (%s) (have: %s)" % (name, endpoint, have),
+              file=sys.stderr)
+        return {"name": name, "addr": endpoint, "temp": None, "zone": None,
+                "ok": False, "error": "no known CPU zone"}
+
+    return {"name": name, "addr": endpoint, "temp": temp, "zone": zone,
+            "ok": True, "error": None}
+
+
+# --- curve -------------------------------------------------------------------
+def temp_to_pct(temp):
+    """Linear interpolation across the curve, clamped at both ends."""
+    if temp <= CURVE[0][0]:
+        return CURVE[0][1]
+    if temp >= CURVE[-1][0]:
+        return CURVE[-1][1]
+    for (t0, p0), (t1, p1) in zip(CURVE, CURVE[1:]):
+        if t0 <= temp <= t1:
+            frac = (temp - t0) / (t1 - t0)
+            return round(p0 + frac * (p1 - p0))
+    return CURVE[-1][1]  # unreachable, defensive
+
+
+# --- PWM channel resolution (mirrors fancontrol_setup.sh find_chip) ----------
+def find_chip():
+    for d in glob.glob("/sys/class/pwm/pwmchip*"):
+        dev = os.path.join(d, "device")
+        if not os.path.exists(dev):
+            continue
+        target = os.path.realpath(dev)
+        if target.endswith("%s.pwm" % HW_ADDRESS):
+            return os.path.basename(d)
+    return None
+
+
+def duty_path():
+    chip = find_chip()
+    if chip is None:
+        return None
+    return "/sys/class/pwm/%s/pwm%s" % (chip, CHANNEL)
+
+
+def read_period(ch_dir):
+    with open(os.path.join(ch_dir, "period")) as f:
+        return int(f.read().strip())
+
+
+def write_duty(ch_dir, period, pct):
+    duty = period * pct // 100
+    with open(os.path.join(ch_dir, "duty_cycle"), "w") as f:
+        f.write(str(duty))
+
+
+# --- state file (read by the dashboard) --------------------------------------
+def write_state(nodes, peak, pct, driver_addr, any_failed):
+    """Atomically write the current control state to tmpfs for the dashboard.
+
+    Atomic (write temp + rename) so the dashboard never reads a half-written
+    file. STATE_PATH is on tmpfs, so this doesn't wear the SD card.
+    """
+    state = {
+        "ts": time.time(),
+        "poll_interval": POLL_INTERVAL,
+        "peak": peak,
+        "duty_pct": pct,
+        "driver": driver_addr,       # which node's temp is setting the pace
+        "any_failed": any_failed,
+        "curve": [{"temp": t, "pct": p} for t, p in CURVE],
+        "nodes": nodes,              # list of per-node dicts from scrape_node
+    }
+    d = os.path.dirname(STATE_PATH)
+    try:
+        os.makedirs(d, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".state-", suffix=".json")
+        with os.fdopen(fd, "w") as f:
+            json.dump(state, f)
+        os.replace(tmp, STATE_PATH)
+    except Exception as e:
+        print("failed to write state: %s" % e, file=sys.stderr)
+
+
+# --- main loop ---------------------------------------------------------------
+def ip_sort_key(entry):
+    """Numeric sort key for a (name, 'ip:port') node, so .9 precedes .10.
+
+    Falls back to string sort if the host part isn't a plain IPv4 literal
+    (e.g. a hostname), which still gives a stable, sensible order.
+    """
+    _, addr = entry
+    host = addr.rsplit(":", 1)[0]
+    try:
+        return (0, socket.inet_aton(host))
+    except OSError:
+        return (1, host.encode())
+
+
+def main():
+    ch_dir = duty_path()
+    if ch_dir is None or not os.path.isdir(ch_dir):
+        print("PWM channel not ready (setup oneshot must run first)",
+              file=sys.stderr)
+        sys.exit(1)
+
+    period = read_period(ch_dir)
+    last_pct = None
+    nodes_sorted = sorted(NODES, key=ip_sort_key)
+
+    while True:
+        nodes = [scrape_node(name, addr) for name, addr in nodes_sorted]
+
+        # Effective temp per node: real temp if ok, else top-of-curve so a
+        # failed node pushes toward FAIL_PCT.
+        for n in nodes:
+            n["effective"] = n["temp"] if n["ok"] else CURVE[-1][0]
+
+        peak = max(n["effective"] for n in nodes)
+        any_failed = any(not n["ok"] for n in nodes)
+
+        # Which node is setting the pace? The (first) node at the peak. A
+        # failed node at top-of-curve can be the driver, which is correct —
+        # it's why the fans are up.
+        driver = next(n["addr"] for n in nodes if n["effective"] == peak)
+
+        pct = temp_to_pct(peak)
+        if any_failed:
+            pct = max(pct, FAIL_PCT)
+
+        # State is written EVERY poll so the dashboard sees fresh temps even
+        # when duty is unchanged. Duty is only WRITTEN on change.
+        write_state(nodes, peak, pct, driver, any_failed)
+
+        if pct != last_pct:
+            try:
+                write_duty(ch_dir, period, pct)
+                print("peak=%.1fC -> %d%%%s"
+                      % (peak, pct, " (node failure)" if any_failed else ""))
+                last_pct = pct
+            except Exception as e:
+                print("failed to write duty: %s" % e, file=sys.stderr)
+
+        time.sleep(POLL_INTERVAL)
+
+
+if __name__ == "__main__":
+    main()

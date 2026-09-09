@@ -1,0 +1,12 @@
+---
+# Install the pi coding agent harness on the pidev containers.
+# Runs after playbooks/hardening.yml, which creates the `admin` user and
+# regenerates post_harden.yml (default inventory) with the `pidev` group.
+- name: Install the pidev harness on pidev LXCs
+  hosts: pidev
+  become: true
+  tasks:
+    - name: Install the pi coding agent harness
+      ansible.builtin.import_role:
+        name: pidev
+        tasks_from: install

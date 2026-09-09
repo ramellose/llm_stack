@@ -1,0 +1,16 @@
+---
+# Provision one pidev LXC per human user (group_vars/services/humans.yml):
+# generates per-user SSH keys, runs OpenTofu (LXC creation) and stores the
+# private keys in each user's Vaultwarden account.
+#
+# New containers are only reachable after playbooks/hardening.yml has run
+# (it creates the `admin` user and regenerates post_harden.yml with the new
+# `pidev` group). scripts/provision_users.sh orchestrates the full chain.
+
+- name: Provision pidev LXCs for human users
+  hosts: controller_hosts
+  become: true
+  connection: local
+  gather_facts: false
+  roles:
+    - pidev

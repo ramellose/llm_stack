@@ -1,0 +1,133 @@
+# Agent harness
+
+Running an agent harness on your own computer can be risky. For harnesses to be useful without a lot of setup, they need to allow agents to execute all kinds of commands. Some of those commands can be destructive - you don't want the agent to delete important project folders.
+
+The harness installed in the container is [pi](https://pi.dev/). It is very minimal - that makes it flexible and fast, but also a bit dangerous. Using it in a container means that it cannot directly access your data, passwords et cetera. This does _not_ mean it is completely without risks; if the harness has an internet connection, it could still install dependencies with known security vulnerabilities, for example. And if you copy a password file into the container, it will probably try to use it. But it will not easibly be able to access your personal computer and delete your files.  
+
+## Connect to the container
+
+In your vault, you will find a SSH key.
+Create a file in your `~/.ssh` folder (in Windows, this is different compared to Linux) where you copy the private key. For example:
+
+```
+echo '<PRIVATE KEY' > ~/.ssh/id_pidev
+```
+
+Check you can use the key:
+
+
+```
+ssh-add -L
+```
+
+The notes of the SSH key item contain the container configuration, for example:
+
+```
+Host pidev
+  HostName 192.168.xx.x
+  User admin
+  Port 22
+  IdentityFile ~/.ssh/id_pidev
+```
+
+Copy the content to your SSH configuration:
+
+```
+echo '<NOTES>' > ~/.ssh/config
+```
+
+Now you can access the container:
+
+```
+ssh pidev
+```
+
+## tmux
+
+To avoid losing access to an active `pi` session, you can run it through `tmux`:
+
+```
+tmux new-session -d -s <session_name>
+```
+
+You can see and connect to listed sessions like this: 
+
+```
+tmux ls
+tmux attach-session -t <session_name>
+```
+
+Detach from the active session using `ctrl+b`, then press `d`. 
+Use `tmux kill-session -t <session_name` or execute `exit` from inside the session to end it. 
+
+## pi 
+
+Starting `pi` is straightforward: 
+
+```
+pi
+```
+
+You can type instructions in the text box and press enter to send them. 
+
+The agent will have access to all files in the directory that you start `pi` from. 
+
+```
+root
+   |_project_1
+   |   |_subproject_a
+   |   |_subproject_b 
+   |    
+   |_project_2
+```
+
+If you have a directory structure like shown above: 
+
+- Running `cd ~/project_1` and then `pi` gives access to everything in `project_1`, including the subprojects
+- Running `cd ~` and then `pi` gives access to both projects 
+
+The more precise your inputs are, the more effective the agent will be. 
+If you only give it the files it needs, it will not try to search the other files for relevant information. 
+
+## Sending files to pi
+
+If you want to work on a project, it is helpful to be able to copy your files to the container. 
+You can use `scp` to copy files directly using your SSH access, or you can use Forgejo. 
+
+For `scp` you need to run all commands on your own computer. 
+This copies a directory with all files from your computer to the container: 
+
+```
+scp -r ~/Documents/project_1 pidev:/project_1 
+```
+
+This copies the `project_1` directory back to your computer (with a different directory name, to avoid overwriting your files): 
+
+```
+scp -r pidev:/project_1 ~/Documents/project_1_pidev
+```
+
+While `scp` does not need a lot of setup, copying files back and forth manually is error-prone. 
+It also makes it difficult to see exactly what the agent did. 
+
+Follow the instructions in [Local git](local_git.md) to see how you can set up Forgejo instead. 
+If you have a repository, make sure to check out a branch for the agent to work in: 
+
+```
+git clone https://forgejo.{{ base_domain }}/<username>/<projectname>.git
+
+cd <projectname>
+git remote add origin https://forgejo.{{ base_domain }}/<username>/<projectname>.git
+git checkout -b agent_branch_name
+```
+
+You can either add the changes yourself, or ask the agent to make a commit: 
+
+```
+git add . 
+git commit -m "Descriptive message"
+git push origin agent_branch_name
+```
+
+With this setup, you will need to login to Forgejo manually. 
+You will also need to review the changes made by the agent from [Forgejo](https://forgejo.{{ base_domain }}).  

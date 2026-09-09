@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Central fan control daemon (temp-aware, cluster-wide)
+# Must not run until the PWM hardware is brought up and the channel exported.
+Requires=fancontrol.service
+After=fancontrol.service
+# Network must be up to scrape node_exporter endpoints.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+Type=simple
+ExecStart=/usr/bin/env python3 /usr/local/bin/fancontrol_daemon.py
+Restart=always
+RestartSec=5
+# On stop/crash, DON'T leave the fan at whatever the last write was if that
+# was a low value — but the setup oneshot's initial duty remains in the
+# hardware, so a clean baseline persists. Nothing to do here.
+
+[Install]
+WantedBy=multi-user.target

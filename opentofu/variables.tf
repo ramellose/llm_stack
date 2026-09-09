@@ -101,20 +101,19 @@ variable "stack_network" {
     cpu_cores    = number
     memory_mb    = number
     disk_size_gb = number
-    caddy = list(object( {
+    services     = list(object({
       service       = string
-    }))
-    unbound = list(object( {
-      service       = string
-    }))
+      subdomain     = optional(string)
+      target_port   = optional(number)
+      kind          = optional(string, "proxy")
+    }))    
   }))
   default = [
     { hostname = "networkservices01", cpu_cores = 2, memory_mb = 2048, disk_size_gb = 30,
-      caddy = [
-        { service = "caddy"}
-      ], 
-      unbound = [
-        { service = "unbound"}
+      services = [
+        { service = "caddy" },
+        { service = "unbound" },
+        { service = "docs", subdomain = "docs" }
       ]
     }
   ]
@@ -148,4 +147,16 @@ variable "stack_services" {
       ]
     }
   ]
+}
+
+variable "stack_pidev" {
+  description = "Per-user pidev dev containers (one LXC per human user, see ansible group_vars/services/humans.yml)"
+  type = list(object({
+    hostname              = string
+    cpu_cores             = number
+    memory_mb             = number
+    disk_size_gb          = number
+    additional_ssh_pub_keys = optional(list(string), [])
+  }))
+  default = []
 }

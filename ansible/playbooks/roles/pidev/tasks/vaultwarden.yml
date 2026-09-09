@@ -1,0 +1,57 @@
+---
+# Store {{ human.name }}'s pidev SSH key in their own Vaultwarden account.
+# Session pattern mirrors roles/forgejo/tasks/provision_user.yml.
+
+- name: "Set admin Vaultwarden session [{{ human.name }}]"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: session
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    bw_email: "{{ vault_admin_mail }}"
+    bw_master_password: "{{ hostvars[secrets_controller_host].vault_vaultwarden_secret }}"
+
+- name: "Fetch [{{ human.name }}] Vaultwarden master password (admin vault)"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: get_secret
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    secret:
+      name: "vault-account-{{ human.name }}"
+
+- name: "Set session as [{{ human.name }}]"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: session
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    bw_email: "{{ human.name }}@{{ base_domain }}"
+    bw_master_password: "{{ vw_resolved['vault-account-' ~ human.name] }}"
+
+- name: "Store pidev SSH key in [{{ human.name }}] Vaultwarden"
+  ansible.builtin.include_role:
+    name: secrets
+    tasks_from: insert_secret
+    apply:
+      delegate_to: "{{ secrets_controller_host }}"
+  vars:
+    vw_overwrite: false
+    secret:
+      name: "pidev-ssh-key-{{ human.name }}"
+      username: "pidev-{{ human.name }}"
+      value: "{{ lookup('file', pidev_key_dir ~ '/id_ed25519_' ~ human.name) }}"
+      notes: |
+        SSH access to your pidev container ({{ pidev_ips['pidev-' ~ human.name].ip_address }}).
+
+        1. Save the key above to ~/.ssh/id_pidev, then: chmod 600 ~/.ssh/id_pidev
+        2. Add this to ~/.ssh/config:
+
+        Host pidev
+          HostName {{ pidev_ips['pidev-' ~ human.name].ip_address }}
+          User admin
+          Port 22
+          IdentityFile ~/.ssh/id_pidev

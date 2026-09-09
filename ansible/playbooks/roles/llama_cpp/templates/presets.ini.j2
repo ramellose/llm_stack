@@ -1,0 +1,19 @@
+version = 1
+
+[*]
+n-gpu-layers = {{ llama_cpp_n_gpu_layers }}
+flash-attn = on
+cache-type-k = {{ llama_cpp_cache_type }}
+cache-type-v = {{ llama_cpp_cache_type }}
+ctx-size = {{ llama_cpp_default_ctx }}
+{% for model in llama_models %}
+
+[{{ model.name }}]
+model = {{ llama_cpp_models_dir }}/{{ model.hf_file }}
+{% if model.ctx_size is defined %}
+ctx-size = {{ model.ctx_size }}
+{% endif %}
+{% if model.context_shift is defined %}
+context-shift = {{ model.context_shift | ternary('on', 'off') }}
+{% endif %}
+{% endfor %}

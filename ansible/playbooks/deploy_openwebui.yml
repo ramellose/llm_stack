@@ -1,0 +1,14 @@
+---
+# Provision Open WebUI accounts for human users: creates the stack admin
+# account (first signup becomes owner) and one account per human via the
+# admin API, and stores each login in the user's own Vaultwarden account as
+# item `openwebui-password-<user>`.
+#
+# The Open WebUI container itself is deployed by the docker_stack role
+# (playbooks/deploy_services.yml).
+
+- name: Provision Open WebUI accounts
+  hosts: dockerservices
+  become: true
+  roles:
+    - openwebui

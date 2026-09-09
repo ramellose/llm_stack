@@ -1,0 +1,25 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart fan pwm service
+  ansible.builtin.systemd:
+    name: fancontrol.service
+    state: restarted
+
+- name: Reapply fan pwm overlay
+  ansible.builtin.command:
+    cmd: rmdir /sys/kernel/config/device-tree/overlays/{{ fan_pwm_overlay_name }}
+    removes: /sys/kernel/config/device-tree/overlays/{{ fan_pwm_overlay_name }}
+  notify: Restart fan pwm service
+
+- name: Restart fan control daemon
+  ansible.builtin.systemd:
+    name: fancontrol_daemon.service
+    state: restarted
+
+- name: Restart fan dashboard
+  ansible.builtin.systemd:
+    name: fancontrol_dashboard.service
+    state: restarted

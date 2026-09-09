@@ -1,0 +1,13 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "{{ fan_pwm_soc_compatible }}";
+
+    fragment@0 {
+        target = <&{{ fan_pwm_dt_label }}>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+};

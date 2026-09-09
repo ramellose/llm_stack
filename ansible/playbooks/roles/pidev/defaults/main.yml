@@ -1,0 +1,33 @@
+---
+# One pidev dev LXC per human user.
+# Controller-side defaults (key material, tfvars) and LXC-side harness defaults.
+
+# Paths (same values the controller role computes; duplicated here so the
+# role is self-contained when run standalone)
+ansible_root: "{{ playbook_dir | dirname }}"
+inventory_dir: "{{ ansible_root }}/inventory"
+repo_root: "{{ ansible_root | dirname }}"
+controller_key_owner: admin
+pidev_key_dir: "/home/{{ controller_key_owner }}/.ssh/pidev"
+
+# Single source of truth for human users
+humans_file: "{{ inventory_dir }}/group_vars/services/humans.yml"
+
+# Vaultwarden (group_vars/services/agents.yml defines the same for the
+# services group; duplicated here so the role works from controller_hosts)
+secrets_controller_host: controller_node_1
+vault_admin_mail: "admin@{{ base_domain }}"
+
+# LXC sizing; per-user overrides via the `pidev:` key in humans.yml
+# (e.g. `pidev: { cpu: 4, ram: 8192, disk: 80 }`)
+pidev_lxc_cpu: 2
+pidev_lxc_ram: 4096
+pidev_lxc_disk: 40
+
+# pi harness
+node_major_version: 26
+pi_coding_agent_package: "@earendil-works/pi-coding-agent"
+pi_llama_cpp_extension: "npm:pi-llama-cpp"
+
+# Local LLM endpoint (group_vars/all/llama.yml)
+llama_server_url: "http://{{ hostvars[llama_server_host].ansible_host }}:{{ llama_cpp_port }}"

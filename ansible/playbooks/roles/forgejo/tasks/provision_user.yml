@@ -25,42 +25,6 @@
   when: fj_user_get.status == 404
   no_log: true
 
-- name: "List tokens [{{ agent.name }}]"
-  ansible.builtin.uri:
-    url: "{{ forgejo_api_base }}/users/{{ agent.forgejo.user }}/tokens"
-    method: GET
-    url_username: "{{ agent.forgejo.user }}"
-    url_password: "{{ vw_resolved['forgejo-password-' + agent.name] }}"
-    force_basic_auth: true
-    status_code: [200]
-  register: fj_tokens
-
-- name: "Delete stale token [{{ agent.name }}]"
-  ansible.builtin.uri:
-    url: "{{ forgejo_api_base }}/users/{{ agent.forgejo.user }}/tokens/{{ agent.tokens[0].name }}"
-    method: DELETE
-    url_username: "{{ agent.forgejo.user }}"
-    url_password: "{{ vw_resolved['forgejo-password-' + agent.name] }}"
-    force_basic_auth: true
-    status_code: [204, 404]
-  when: >-
-    fj_tokens.json | selectattr('name', 'equalto', agent.tokens[0].name) | list | length > 0
-
-- name: "Create API token [{{ agent.name }}]"
-  ansible.builtin.uri:
-    url: "{{ forgejo_api_base }}/users/{{ agent.forgejo.user }}/tokens"
-    method: POST
-    url_username: "{{ agent.forgejo.user }}"
-    url_password: "{{ vw_resolved['forgejo-password-' + agent.name] }}"
-    force_basic_auth: true
-    body_format: json
-    body:
-      name: "{{ agent.tokens[0].name }}"
-      scopes: "{{ agent.tokens[0].scopes }}"
-    status_code: [201]
-  register: fj_token_create
-  no_log: true
-
 - name: "Set agent vault session [{{ agent.name }}]"
   ansible.builtin.include_role:
     name: secrets
@@ -70,23 +34,6 @@
   vars:
     bw_email: "{{ agent.forgejo.user }}@{{ base_domain }}"
     bw_master_password: "{{ vw_resolved['vault-account-' + agent.name] }}"
-
-- name: "Store token in agent vault [{{ agent.name }}]"
-  ansible.builtin.include_role:
-    name: secrets
-    tasks_from: insert_secret
-    apply:
-      delegate_to: "{{ secrets_controller_host }}"
-  vars:
-    vw_overwrite: true
-  loop:
-    - name: "{{ agent.tokens[0].bw_item | default('forgejo-token-' + agent.name) }}"
-      username: "{{ agent.forgejo.user }}"
-      value: "{{ fj_token_create.json.sha1 }}"
-  loop_control:
-    loop_var: secret
-    label: "{{ secret.name }}"
-  when: fj_token_create is not skipped
 
 - name: "Store Forgejo pass in agent vault [{{ agent.name }}]"
   ansible.builtin.include_role:
@@ -103,3 +50,60 @@
   loop_control:
     loop_var: secret
     label: "{{ secret.name }}"
+
+- name: "Token lifecycle [{{ agent.name }}]"
+  when: agent.tokens is defined
+  block:
+
+  - name: "List tokens [{{ agent.name }}]"
+    ansible.builtin.uri:
+      url: "{{ forgejo_api_base }}/users/{{ agent.forgejo.user }}/tokens"
+      method: GET
+      url_username: "{{ agent.forgejo.user }}"
+      url_password: "{{ vw_resolved['forgejo-password-' + agent.name] }}"
+      force_basic_auth: true
+      status_code: [200]
+    register: fj_tokens
+
+  - name: "Delete stale token [{{ agent.name }}]"
+    ansible.builtin.uri:
+      url: "{{ forgejo_api_base }}/users/{{ agent.forgejo.user }}/tokens/{{ agent.tokens[0].name }}"
+      method: DELETE
+      url_username: "{{ agent.forgejo.user }}"
+      url_password: "{{ vw_resolved['forgejo-password-' + agent.name] }}"
+      force_basic_auth: true
+      status_code: [204, 404]
+    when: >-
+      fj_tokens.json | selectattr('name', 'equalto', agent.tokens[0].name) | list | length > 0
+
+  - name: "Create API token [{{ agent.name }}]"
+    ansible.builtin.uri:
+      url: "{{ forgejo_api_base }}/users/{{ agent.forgejo.user }}/tokens"
+      method: POST
+      url_username: "{{ agent.forgejo.user }}"
+      url_password: "{{ vw_resolved['forgejo-password-' + agent.name] }}"
+      force_basic_auth: true
+      body_format: json
+      body:
+        name: "{{ agent.tokens[0].name }}"
+        scopes: "{{ agent.tokens[0].scopes }}"
+      status_code: [201]
+    register: fj_token_create
+    no_log: true
+
+  - name: "Store token in agent vault [{{ agent.name }}]"
+    ansible.builtin.include_role:
+      name: secrets
+      tasks_from: insert_secret
+      apply:
+        delegate_to: "{{ secrets_controller_host }}"
+    vars:
+      vw_overwrite: true
+    loop:
+      - name: "{{ agent.tokens[0].bw_item | default('forgejo-token-' + agent.name) }}"
+        username: "{{ agent.forgejo.user }}"
+        value: "{{ fj_token_create.json.sha1 }}"
+    loop_control:
+      loop_var: secret
+      label: "{{ secret.name }}"
+    when: fj_token_create is not skipped

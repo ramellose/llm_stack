@@ -52,6 +52,12 @@ variable "ssh_pub_key" {
   sensitive   = true
 }
 
+variable "additional_ssh_pub_keys" {
+  description = "Extra public keys added to the root user's cloud-init authorized_keys (e.g. per-user keys for pidev containers)"
+  type        = list(string)
+  default     = []
+}
+
 variable "network_bridge" {
   description = "Proxmox bridge name (e.g., vmbr0, vmbr1)"
   type        = string

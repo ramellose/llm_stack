@@ -36,21 +36,25 @@
 
 - name: "Reset agent specs"
   ansible.builtin.set_fact:
-    agent_vault_secrets: []
+    user_vault_secrets: []
     forgejo_pw_secrets: []
     team_member_specs: []
 
+- name: "Build combined principal list"
+  ansible.builtin.set_fact:
+    principals: "{{ agents | default([]) + (humans | default([])) }}"
+
 - name: "Build vault-account specs"
   ansible.builtin.set_fact:
-    agent_vault_secrets: "{{ agent_vault_secrets + [{'name': 'vault-account-' + item.name}] }}"
-  loop: "{{ agents }}"
+    user_vault_secrets: "{{ user_vault_secrets + [{'name': 'vault-account-' + item.name}] }}"
+  loop: "{{ principals }}"
   loop_control:
     label: "{{ item.name }}"
 
 - name: "Build forgejo-password specs"
   ansible.builtin.set_fact:
     forgejo_pw_secrets: "{{ forgejo_pw_secrets + [{'name': 'forgejo-password-' + item.name, 'username': item.forgejo.user, 'generate_cmd': vw_gen_cmd}] }}"
-  loop: "{{ agents }}"
+  loop: "{{ principals }}"
   loop_control:
     label: "{{ item.name }}"
 
@@ -60,7 +64,7 @@
     tasks_from: get_secret
     apply:
       delegate_to: "{{ secrets_controller_host }}"
-  loop: "{{ agent_vault_secrets }}"
+  loop: "{{ user_vault_secrets }}"
   loop_control:
     loop_var: secret
     label: "{{ secret.name }}"
@@ -80,7 +84,7 @@
 
 - name: Provision each agent
   ansible.builtin.include_tasks: provision_user.yml
-  loop: "{{ agents }}"
+  loop: "{{ principals }}"
   loop_control:
     loop_var: agent
     label: "{{ agent.name }}"
@@ -88,7 +92,7 @@
 - name: "Build machine-user membership specs"
   ansible.builtin.set_fact:
     team_member_specs: "{{ team_member_specs | default([]) + [{'org': item.0.forgejo.org, 'team': item.1, 'user': item.0.forgejo.user}] }}"
-  loop: "{{ agents | subelements('forgejo.teams', skip_missing=True) }}"
+  loop: "{{ principals | subelements('forgejo.teams', skip_missing=True) }}"
   loop_control:
     label: "{{ item.0.forgejo.user }} -> {{ item.1 }}"
 

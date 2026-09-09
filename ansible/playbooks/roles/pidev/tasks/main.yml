@@ -1,0 +1,84 @@
+---
+# Controller side: provision pidev LXCs for all human users.
+#   1. load humans from inventory (group_vars/services/humans.yml)
+#   2. generate one ed25519 keypair per user on the controller
+#   3. re-render config.tfvars (stack_pidev) and run `tofu.sh apply`
+#      -> creates LXCs, regenerates inventory/tofu_generated.json (pidev group)
+#   4. store each user's private key in their own Vaultwarden account
+# LXC-side work (authorized_keys + pi install) lives in tasks/install.yml and
+# runs via playbooks/deploy_pidev.yml after the containers have been hardened.
+
+- name: Load human users from inventory
+  ansible.builtin.set_fact:
+    humans_raw: "{{ lookup('file', humans_file) | from_yaml }}"
+
+- name: Extract the humans list (file is a group-vars mapping with a `humans:` key)
+  ansible.builtin.set_fact:
+    pidev_humans: "{{ humans_raw['humans'] if humans_raw is mapping and 'humans' in humans_raw else humans_raw }}"
+
+- name: Assert human users are defined
+  ansible.builtin.assert:
+    that:
+      - pidev_humans | length > 0
+      - pidev_humans | selectattr('name', 'defined') | list | length == pidev_humans | length
+    fail_msg: >-
+      Expected a non-empty list of users with `name` keys in {{ humans_file }}.
+
+- name: Ensure pidev key directory exists on the controller
+  ansible.builtin.file:
+    path: "{{ pidev_key_dir }}"
+    owner: "{{ controller_key_owner }}"
+    group: "{{ controller_key_owner }}"
+    mode: "0700"
+    state: directory
+
+- name: Generate per-user ed25519 keypair (idempotent)
+  community.crypto.openssh_keypair:
+    path: "{{ pidev_key_dir }}/id_ed25519_{{ item.name }}"
+    type: ed25519
+    owner: "{{ controller_key_owner }}"
+    group: "{{ controller_key_owner }}"
+    mode: "0600"
+  loop: "{{ pidev_humans }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Build stack_pidev entries for config.tfvars
+  ansible.builtin.set_fact:
+    pidev_tfvars: "{{ pidev_tfvars | default([]) + [pidev_entry] }}"
+  loop: "{{ pidev_humans }}"
+  loop_control:
+    loop_var: human
+    label: "{{ human.name }}"
+  vars:
+    pidev_pubkey: "{{ lookup('file', pidev_key_dir ~ '/id_ed25519_' ~ human.name ~ '.pub', errors='ignore') }}"
+    pidev_sizing: "{{ human.pidev | default({}) }}"
+    pidev_entry:
+      hostname: "pidev-{{ human.name }}"
+      cpu_cores: "{{ pidev_sizing.cpu | default(pidev_lxc_cpu) | int }}"
+      memory_mb: "{{ pidev_sizing.ram | default(pidev_lxc_ram) | int }}"
+      disk_size_gb: "{{ pidev_sizing.disk | default(pidev_lxc_disk) | int }}"
+      additional_ssh_pub_keys: "{{ [pidev_pubkey] if pidev_pubkey | length > 0 else [] }}"
+
+- name: Re-render tfvars and apply OpenTofu (creates LXC, refreshes generated inventory)
+  ansible.builtin.include_role:
+    name: controller
+    tasks_from: config
+
+- name: Read pidev LXC metadata from OpenTofu outputs
+  ansible.builtin.command:
+    cmd: tofu output -json pidev_hosts
+    chdir: "{{ repo_root }}/opentofu"
+  register: pidev_tofu_output
+  changed_when: false
+
+- name: Set pidev LXC fact
+  ansible.builtin.set_fact:
+    pidev_ips: "{{ pidev_tofu_output.stdout | from_json }}"
+
+- name: Store per-user SSH keys in Vaultwarden
+  ansible.builtin.include_tasks: vaultwarden.yml
+  loop: "{{ pidev_humans }}"
+  loop_control:
+    loop_var: human
+    label: "{{ human.name }}"

@@ -1,0 +1,40 @@
+---
+- name: Create venv
+  ansible.builtin.command:
+    cmd: "python3 -m venv {{ docs_venv }}"
+    creates: "{{ docs_venv }}/bin/activate"
+
+- name: Install renderer dependencies
+  ansible.builtin.pip:
+    name:
+      - markdown
+      - jinja2
+    virtualenv: "{{ docs_venv }}"
+    virtualenv_command: "python3 -m venv"
+
+- name: Render markdown to HTML
+  ansible.builtin.command: >-
+    {{ docs_venv }}/bin/python md2pages.py --base-domain {{ base_domain }}
+  become: true
+  args:
+    chdir: "{{ docs_dir }}"
+
+- name: Ensure web root on Caddy host
+  ansible.builtin.file:
+    path: "{{ docs_webroot }}"
+    state: directory
+    mode: "0755"
+    owner: admin
+    group: admin
+  become: true
+  delegate_to: "{{ caddy_host }}"
+
+- name: Deploy rendered HTML to Caddy host
+  ansible.builtin.command:
+    cmd: >
+      rsync -a --delete
+      -e "ssh -i {{ controller_key_path }} -o StrictHostKeyChecking=accept-new"
+      {{ docs_dir }}/dist/
+      admin@{{ hostvars[caddy_host]['ansible_host'] }}:{{ docs_webroot }}/
+  become: true
+  changed_when: true

@@ -1,0 +1,118 @@
+---
+# LXC side: make the user's key work for `admin` and install the pi harness.
+# Run by playbooks/deploy_pidev.yml after the containers have been hardened
+# (admin user exists, controller key already in admin's authorized_keys).
+
+- name: Resolve the human user for this container
+  ansible.builtin.set_fact:
+    pidev_user: "{{ pidev_humans | selectattr('name', 'equalto', inventory_hostname | regex_replace('^pidev-', '')) | first }}"
+  vars:
+    humans_raw: "{{ lookup('file', humans_file) | from_yaml }}"
+    pidev_humans: "{{ humans_raw['humans'] if humans_raw is mapping and 'humans' in humans_raw else humans_raw }}"
+
+- name: Assert this container has a matching human user
+  ansible.builtin.assert:
+    that:
+      - pidev_user is defined
+      - pidev_user is not none
+    fail_msg: "No human user matches hostname {{ inventory_hostname }} (expected pidev_<name>)."
+
+- name: Slurp the user's public key from the controller
+  ansible.builtin.slurp:
+    src: "{{ pidev_key_dir }}/id_ed25519_{{ pidev_user.name }}.pub"
+  delegate_to: "{{ secrets_controller_host }}"
+  register: pidev_user_pubkey
+
+- name: Authorize the user's public key for admin
+  ansible.posix.authorized_key:
+    user: admin
+    key: "{{ (pidev_user_pubkey.content | b64decode) | trim }}"
+    state: present
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name:
+      - python3-debian
+      - git
+      - tmux
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check installed Node.js version
+  ansible.builtin.command: node --version
+  register: node_version_check
+  failed_when: false
+  changed_when: false
+
+- name: Add NodeSource repository for Node.js {{ node_major_version }}
+  ansible.builtin.deb822_repository:
+    name: nodesource
+    types: deb
+    uris: "https://deb.nodesource.com/node_{{ node_major_version }}.x"
+    suites: nodistro
+    components: main
+    signed_by: "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
+    state: present
+  when: node_version_check.rc != 0 or ('v' ~ node_major_version) not in node_version_check.stdout
+
+- name: Install Node.js {{ node_major_version }} (bundles npm)
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+  when: node_version_check.rc != 0 or ('v' ~ node_major_version) not in node_version_check.stdout
+
+- name: List globally installed npm packages
+  ansible.builtin.command: npm list -g --depth=0 --parseable
+  register: npm_global_list
+  failed_when: false
+  changed_when: false
+
+- name: Install pi-coding-agent globally
+  ansible.builtin.command:
+    cmd: npm install -g --ignore-scripts {{ pi_coding_agent_package }}
+  when: pi_coding_agent_package not in npm_global_list.stdout
+
+- name: Install pi-llama-cpp extension
+  ansible.builtin.command: pi install {{ pi_llama_cpp_extension }}
+  become: true
+  become_user: admin
+  args:
+    creates: /home/admin/.pi/agent/npm/node_modules/pi-llama-cpp
+  environment:
+    HOME: /home/admin
+
+- name: Ensure agent config directory exists
+  ansible.builtin.file:
+    path: /home/admin/.pi/agent
+    state: directory
+    owner: admin
+    group: admin
+    mode: "0755"
+
+- name: Write llama-server auth stub
+  ansible.builtin.template:
+    src: auth.json.j2
+    dest: /home/admin/.pi/agent/auth.json
+    owner: admin
+    group: admin
+    mode: "0600"
+
+- name: Write llama-server settings stub
+  ansible.builtin.template:
+    src: settings.json.j2
+    dest: /home/admin/.pi/agent/settings.json
+    owner: admin
+    group: admin
+    mode: "0600"
+
+- name: Smoke check pi harness
+  ansible.builtin.command: pi --version
+  become: true
+  become_user: admin
+  environment:
+    HOME: /home/admin
+  register: pi_version_check
+  changed_when: false
+  failed_when: false

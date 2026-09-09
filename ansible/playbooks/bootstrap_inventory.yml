@@ -6,9 +6,3 @@
   gather_facts: false
   roles:
     - controller
-
-  tasks:
-    - name: Install bw CLI
-      ansible.builtin.import_role:
-        name: secrets
-        tasks_from: install_client

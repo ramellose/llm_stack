@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+# {{ ansible_managed }}
+#
+# Fan/temperature dashboard for the SBC cluster. Runs on the controller's
+# HDMI console (tty1). Reads the fan daemon's state file (written every poll
+# to tmpfs) and renders a live view: per-node CPU temp bars, which node is
+# driving the fans, the current duty cycle, and any node failures.
+#
+# This is a pure DISPLAY. It does no scraping and no control -- it is a window
+# onto what the daemon already decided, so what you see is exactly what the
+# hardware is doing.
+
+import json
+import os
+import time
+
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.padding import Padding
+from rich.table import Table
+from rich.text import Text
+from rich.align import Align
+
+STATE_PATH = "{{ fan_state_path }}"
+REFRESH = {{ dashboard_refresh }}          # seconds between screen redraws
+STALE_AFTER = {{ dashboard_stale_after }}  # state older than this = daemon dead?
+TITLE = "{{ dashboard_title }}"
+MARGIN = {{ dashboard_margin }}            # blank cells around the whole panel
+ANIM_FPS = 10                              # hamster animation ticks per second
+
+console = Console()
+
+
+def load_state():
+    """Return (state_dict, error_str). error_str is None on success."""
+    try:
+        with open(STATE_PATH) as f:
+            return json.load(f), None
+    except FileNotFoundError:
+        return None, "waiting for daemon (no state file yet)"
+    except (json.JSONDecodeError, ValueError):
+        # Should be rare thanks to atomic writes; treat as transient.
+        return None, "state file unreadable (transient)"
+    except Exception as e:
+        return None, "error reading state: %s" % e
+
+
+def temp_color(temp, curve):
+    """Green below the first breakpoint, amber mid-curve, red near the top."""
+    lo = curve[0]["temp"]
+    hi = curve[-1]["temp"]
+    if temp is None:
+        return "bright_black"
+    if temp >= hi:
+        return "bold red"
+    if temp <= lo:
+        return "green"
+    # amber band in the middle
+    mid = lo + (hi - lo) * 0.66
+    return "yellow" if temp < mid else "red"
+
+
+def bar(frac, width, color):
+    """A proportional bar using block chars, clamped to [0,1]."""
+    frac = max(0.0, min(1.0, frac))
+    filled = int(round(frac * width))
+    t = Text()
+    t.append("█" * filled, style=color)
+    t.append("░" * (width - filled), style="bright_black")
+    return t
+
+
+# --- hamster wheel animation -------------------------------------------------
+# Two walk frames: hamster forward vs back in the wheel. The animation speed
+# tracks fan duty (faster = hotter). At 100% the hamster "loses" and becomes a
+# circular blur while the whole wheel jitters, as if spinning against its axis.
+
+HAMSTER_WALK = [
+    r"""        _________
+      /           \
+     /             \
+    /               \
+    |                |
+    |                | 
+     \              /
+      \ <0(==)     /
+       \  ~   `   /
+        ---------""",
+    r"""        _________
+      /           \
+     /             \
+    /               \
+    |                |
+    |                |
+     \              /
+      \    <0(==)  /
+       \     `  ~ /
+        ---------""",
+]
+
+# 100% "out of control": the hamster is a blur circling inside the wheel. To
+# guarantee the wheel outline is IDENTICAL to the walk frames (no shape-shift at
+# the 99->100 transition), we take walk frame 0 and overwrite only the interior
+# where the hamster body was — never the rim characters themselves.
+_WALK_LINES = HAMSTER_WALK[0].split("\n")
+
+
+def _place_in_row(row, col, glyph):
+    """Overwrite a single interior column of a wheel row with glyph."""
+    if col < 0 or col >= len(row):
+        return row
+    return row[:col] + glyph + row[col + 1:]
+
+
+def _spin_frame(blur, pos):
+    """pos: 0=top 1=right 2=bottom 3=left — blur position inside the wheel."""
+    lines = list(_WALK_LINES)
+    # Interior body rows are indices 3 (widest) and the two hamster rows 5,6.
+    # Clear the two rows that held the hamster art (indices 5,6) back to blank
+    # interior, preserving the rim slashes at each end.
+    for i in (5, 6):
+        ln = lines[i]
+        # keep leading spaces + the "\" , blank the middle, keep trailing "/"
+        left = ln[:ln.index("\\") + 1]
+        right = ln[ln.rindex("/"):]
+        lines[i] = left + " " * (len(ln) - len(left) - len(right)) + right
+    # Now drop the blur in one spot.
+    mid = 3           # widest interior row index (the "|      |" row)
+    body_top = 5      # upper hamster row
+    body_bot = 6      # lower hamster row
+    if pos == 0:
+        lines[body_top] = _place_in_row(lines[body_top],
+                                        len(lines[body_top]) // 2, blur)
+    elif pos == 2:
+        lines[body_bot] = _place_in_row(lines[body_bot],
+                                        len(lines[body_bot]) // 2, blur)
+    elif pos == 3:  # left
+        ln = lines[mid]
+        lines[mid] = _place_in_row(ln, ln.index("|") + 2, blur)
+    else:           # right
+        ln = lines[mid]
+        lines[mid] = _place_in_row(ln, ln.rindex("|") - 2, blur)
+    return "\n".join(lines)
+
+
+def hamster(duty, tick):
+    """Return (Text, color) for the hamster at this duty and animation tick.
+
+    tick is a monotonically increasing integer advanced by the render loop;
+    how many ticks pass between visible frame changes is what encodes speed.
+    """
+    if duty >= 100:
+        # Out-of-control: blur circles fast, glyph pulses through a set.
+        blur = "@Oo*"[tick % 4]
+        art = _spin_frame(blur, tick % 4)
+        return Text(art, style="bold red"), "bold red"
+
+    # Walk cycle. Map duty (20..99) -> frames-per-second (~1.5..7). The loop
+    # ticks at ANIM_FPS; we advance a walk frame every N ticks where N shrinks
+    # as duty rises.
+    frac = max(0.0, min(1.0, (duty - 20) / 79.0))
+    walk_fps = 1.5 + frac * 5.5
+    ticks_per_frame = max(1, round(ANIM_FPS / walk_fps))
+    idx = (tick // ticks_per_frame) % 2
+    color = "green" if duty < 50 else "yellow"
+    return Text(HAMSTER_WALK[idx], style=color), color
+
+
+def render(state, err, width, tick):
+    # Derive bar widths from the real console width (which changes with the
+    # console font). Reserve room for margin, borders, padding, and the other
+    # table columns; clamp so bars stay sane at any font size.
+    inner = max(20, width - 2 * MARGIN - 4 - 4)  # panel chrome + padding
+    header_bar_w = max(10, min(30, inner - 14))
+    node_bar_w = max(8, min(24, inner - 40))
+    if state is None:
+        waiting = Panel(
+            Align.center(Text(err or "no data", style="yellow"),
+                         vertical="middle"),
+            title=TITLE, title_align="center", border_style="yellow",
+            height=10, padding=(1, 2),
+        )
+        return Padding(waiting, MARGIN)
+
+    curve = state["curve"]
+    lo = curve[0]["temp"]
+    hi = curve[-1]["temp"]
+    age = time.time() - state.get("ts", 0)
+    stale = age > STALE_AFTER
+
+    # --- header: duty + peak ------------------------------------------------
+    duty = state["duty_pct"]
+    duty_color = "green" if duty < 50 else ("yellow" if duty < 100 else "bold red")
+    header = Table.grid(expand=True)
+    header.add_column(justify="left")
+    header.add_column(justify="right")
+    fan_line = Text()
+    fan_line.append("fan  ", style="bold")
+    fan_line.append_text(bar(duty / 100.0, header_bar_w, duty_color))
+    fan_line.append("  %d%%" % duty, style=duty_color)
+    peak_line = Text()
+    peak_line.append("peak %0.1f°C" % state["peak"],
+                     style=temp_color(state["peak"], curve))
+    if state.get("any_failed"):
+        peak_line.append("  ⚠ NODE FAILURE", style="bold red")
+    header.add_row(fan_line, peak_line)
+
+    # --- per-node table -----------------------------------------------------
+    # The zone column is diagnostic detail; drop it at narrow widths (large
+    # fonts) so the temp bars keep enough room to be readable.
+    show_zone = inner >= 46
+    table = Table(expand=True, show_edge=False, pad_edge=False)
+    table.add_column("node", style="bold", no_wrap=True)
+    if show_zone:
+        table.add_column("zone", style="bright_black", no_wrap=True)
+    table.add_column("temp", justify="right", no_wrap=True)
+    table.add_column("", ratio=1)  # bar
+    table.add_column("", justify="right", no_wrap=True)  # driver marker
+
+    driver = state.get("driver")
+    for n in state["nodes"]:
+        addr = n["addr"]
+        # Prefer the inventory name; fall back to the bare IP if absent.
+        label = n.get("name") or addr.split(":")[0]
+        is_driver = (addr == driver)
+        if n["ok"]:
+            temp = n["temp"]
+            col = temp_color(temp, curve)
+            frac = (temp - lo) / (hi - lo) if hi > lo else 0.0
+            temp_txt = Text("%0.1f°C" % temp, style=col)
+            zone_txt = n["zone"] or "?"
+            bar_txt = bar(frac, node_bar_w, col)
+        else:
+            col = "bold red"
+            temp_txt = Text("DOWN", style=col)
+            zone_txt = n.get("error") or "unreachable"
+            bar_txt = Text("── unreachable ──", style="red")
+        marker = Text("◄ driving", style="bold cyan") if is_driver else Text("")
+        node_style = "bold cyan" if is_driver else "bold"
+        row = [Text(label, style=node_style)]
+        if show_zone:
+            row.append(zone_txt)
+        row += [temp_txt, bar_txt, marker]
+        table.add_row(*row)
+
+    # --- footer: freshness --------------------------------------------------
+    if stale:
+        foot = Text("⚠ state is %ds old — daemon may be stopped" % int(age),
+                    style="bold red")
+    else:
+        foot = Text("updated %ds ago · curve %d-%d°C" % (int(age), lo, hi),
+                    style="bright_black")
+
+    # --- hamster wheel (fills the vertical space, speed tracks duty) --------
+    ham_text, _ = hamster(duty, tick)
+    # At 100%, jitter the whole block horizontally so the wheel looks like it's
+    # shaking violently against its axis. Pad-left by 0/1/2 chars per tick.
+    if duty >= 100:
+        jitter = " " * (tick % 3)
+        lines = ham_text.plain.split("\n")
+        ham_text = Text("\n".join(jitter + ln for ln in lines),
+                        style="bold red")
+    hamster_block = Align.center(ham_text)
+
+    body = Group(header, Text(""), table, Text(""), foot,
+                 Text(""), hamster_block)
+    border = "red" if (stale or state.get("any_failed")) else "green"
+    panel = Panel(body, title=TITLE, border_style=border,
+                  title_align="center", padding=(1, 2))
+    # Outer margin so the panel sits inward from wide screen bezels.
+    return Padding(panel, MARGIN)
+
+
+def main():
+    # The animation must tick faster than the data refresh, or the hamster
+    # looks like a slideshow. So the loop runs at ANIM_FPS, advancing a frame
+    # counter every iteration, but only RE-READS the state file every REFRESH
+    # seconds. Fast redraw, slow polling.
+    tick = 0
+    interval = 1.0 / ANIM_FPS
+    ticks_per_reload = max(1, round(REFRESH * ANIM_FPS))
+    state, err = load_state()
+    with Live(console=console, screen=True, refresh_per_second=ANIM_FPS) as live:
+        while True:
+            if tick % ticks_per_reload == 0:
+                # console.size re-reads the tty each call, so a font/resolution
+                # change is picked up without restarting the dashboard.
+                state, err = load_state()
+            live.update(render(state, err, console.size.width, tick))
+            tick += 1
+            time.sleep(interval)
+
+
+if __name__ == "__main__":
+    main()

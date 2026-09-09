@@ -1,0 +1,66 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# Enables {{ fan_pwm_dt_label }} ({{ fan_pwm_hw_address }}) via a runtime
+# device-tree overlay, then sets the fan to a fixed duty cycle.
+# Idempotent: safe to re-run at any time.
+set -e
+
+OVERLAY="{{ fan_pwm_overlay_dir }}/{{ fan_pwm_overlay_name }}.dtbo"
+CFG="/sys/kernel/config/device-tree/overlays/{{ fan_pwm_overlay_name }}"
+HW_ADDRESS="{{ fan_pwm_hw_address }}"
+CHANNEL="{{ fan_pwm_channel }}"
+PERIOD={{ fan_pwm_period_ns }}
+DUTY_PERCENT={{ fan_pwm_duty_percent }}
+POLARITY="{{ fan_pwm_polarity }}"
+
+# --- Layer 1: apply the overlay if the controller isn't already present ------
+mount -t configfs none /sys/kernel/config 2>/dev/null || true
+
+find_chip() {
+  local d target
+  for d in /sys/class/pwm/pwmchip*; do
+    [ -e "$d/device" ] || continue
+    target=$(readlink -f "$d/device")
+    case "$target" in
+      *${HW_ADDRESS}.pwm) basename "$d"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+if ! find_chip >/dev/null; then
+  if [ ! -d "$CFG" ]; then
+    mkdir "$CFG"
+    cat "$OVERLAY" > "$CFG/dtbo"
+    # Surface a bad overlay early instead of silently continuing.
+    status=$(cat "$CFG/status" 2>/dev/null || echo unknown)
+    if [ "$status" != "applied" ]; then
+      echo "overlay status is '$status', expected 'applied'" >&2
+      exit 1
+    fi
+  fi
+  # udev creates the sysfs nodes asynchronously; poll for them.
+  for _ in $(seq 1 50); do
+    find_chip >/dev/null && break
+    sleep 0.1
+  done
+fi
+
+CHIP=$(find_chip) || { echo "PWM controller ${HW_ADDRESS} did not appear" >&2; exit 1; }
+PWMDIR="/sys/class/pwm/${CHIP}"
+CH="${PWMDIR}/pwm${CHANNEL}"
+
+# --- Layer 2: configure the channel -----------------------------------------
+[ -d "$CH" ] || echo "$CHANNEL" > "${PWMDIR}/export"
+# brief settle for the exported channel's attribute files
+for _ in $(seq 1 20); do [ -e "$CH/period" ] && break; sleep 0.1; done
+
+# polarity can only change while disabled; period must precede duty_cycle
+echo 0 > "$CH/enable" 2>/dev/null || true
+echo "$POLARITY" > "$CH/polarity"
+echo "$PERIOD"    > "$CH/period"
+echo $(( PERIOD * DUTY_PERCENT / 100 )) > "$CH/duty_cycle"
+echo 1 > "$CH/enable"
+
+echo "Fan PWM on ${CHIP} (${HW_ADDRESS}) set to ${DUTY_PERCENT}% at $(( 1000000000 / PERIOD )) Hz"
